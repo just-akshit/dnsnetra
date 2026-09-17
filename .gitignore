@@ -1,0 +1,51 @@
+# Frontend & Reference folders
+frontend/
+dns copy/
+dns/
+
+# Test screenshots & MCP artifacts
+*.png
+.playwright-mcp/
+
+# Python & Environment artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# OS & IDE
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Secrets & Environment variables
+.env
+*.env
+.env.*

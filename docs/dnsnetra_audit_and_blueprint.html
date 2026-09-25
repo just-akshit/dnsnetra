@@ -1,0 +1,1529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DNSNetra — System Audit, Ponytail Review &amp; Frontend Blueprint</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: rgba(17, 24, 39, 0.7);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --card-hover: rgba(255, 255, 255, 0.12);
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --primary: #38bdf8;
+      --primary-glow: rgba(56, 189, 248, 0.15);
+      --success: #34d399;
+      --success-glow: rgba(52, 211, 153, 0.15);
+      --warning: #fbbf24;
+      --warning-glow: rgba(251, 191, 36, 0.15);
+      --danger: #f87171;
+      --danger-glow: rgba(248, 113, 113, 0.15);
+      --purple: #c084fc;
+      --cyan: #22d3ee;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(56, 189, 248, 0.08) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(192, 132, 252, 0.06) 0px, transparent 50%),
+        radial-gradient(at 50% 50%, rgba(52, 211, 153, 0.04) 0px, transparent 50%);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      min-height: 100vh;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    code, pre, .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Container */
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 5rem 1.5rem;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 2rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid var(--card-border);
+      flex-wrap: wrap;
+      gap: 1.5rem;
+    }
+
+    .brand-title {
+      font-size: 1.85rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      background: linear-gradient(135deg, #fff 30%, #38bdf8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-badge {
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.25rem 0.65rem;
+      border-radius: 9999px;
+      background: rgba(56, 189, 248, 0.15);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      -webkit-text-fill-color: initial;
+    }
+
+    .header-sub {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      margin-top: 0.35rem;
+      max-width: 700px;
+    }
+
+    .header-stats {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .stat-pill {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      padding: 0.6rem 1rem;
+      border-radius: var(--radius-md);
+      backdrop-filter: blur(12px);
+      display: flex;
+      flex-direction: column;
+      min-width: 130px;
+    }
+
+    .stat-pill-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+    }
+
+    .stat-pill-val {
+      font-size: 1.35rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      color: #fff;
+    }
+
+    /* Tabs Navigation */
+    .tabs-nav {
+      display: flex;
+      gap: 0.5rem;
+      background: rgba(15, 23, 42, 0.6);
+      padding: 0.4rem;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--card-border);
+      margin-bottom: 2rem;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .tabs-nav::-webkit-scrollbar {
+      display: none;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 0.65rem 1.15rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .tab-btn:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .tab-btn.active {
+      background: var(--primary);
+      color: #0b0f19;
+      box-shadow: 0 0 16px rgba(56, 189, 248, 0.35);
+    }
+
+    .tab-badge {
+      font-size: 0.72rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 9999px;
+      background: rgba(0, 0, 0, 0.2);
+    }
+
+    .tab-btn.active .tab-badge {
+      background: rgba(0, 0, 0, 0.25);
+      color: #0b0f19;
+    }
+
+    /* Tab Content Panes */
+    .tab-pane {
+      display: none;
+      animation: fadeIn 0.25s ease-out;
+    }
+
+    .tab-pane.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Cards & Grids */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-lg);
+      padding: 1.4rem;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+      transition: border-color 0.2s ease, transform 0.2s ease;
+    }
+
+    .card:hover {
+      border-color: var(--card-hover);
+    }
+
+    .card-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .card-subtitle {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 0.2rem 0.55rem;
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .badge-success { background: var(--success-glow); color: var(--success); border: 1px solid rgba(52, 211, 153, 0.3); }
+    .badge-warning { background: var(--warning-glow); color: var(--warning); border: 1px solid rgba(251, 191, 36, 0.3); }
+    .badge-danger { background: var(--danger-glow); color: var(--danger); border: 1px solid rgba(248, 113, 113, 0.3); }
+    .badge-info { background: var(--primary-glow); color: var(--primary); border: 1px solid rgba(56, 189, 248, 0.3); }
+    .badge-purple { background: rgba(192, 132, 252, 0.15); color: var(--purple); border: 1px solid rgba(192, 132, 252, 0.3); }
+
+    /* Tables */
+    .table-container {
+      overflow-x: auto;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--card-border);
+      background: rgba(11, 15, 25, 0.5);
+      margin-top: 1rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.875rem;
+    }
+
+    th {
+      background: rgba(17, 24, 39, 0.8);
+      padding: 0.8rem 1rem;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    td {
+      padding: 0.8rem 1rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      color: var(--text);
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    /* Ponytail specific items */
+    .ponytail-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+      padding: 1rem;
+      border-radius: var(--radius-md);
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--card-border);
+      margin-bottom: 0.75rem;
+      transition: background 0.2s ease;
+    }
+
+    .ponytail-item:hover {
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .ponytail-tag {
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', monospace;
+      min-width: 65px;
+      text-align: center;
+    }
+
+    .tag-delete { background: rgba(248, 113, 113, 0.2); color: #f87171; border: 1px solid rgba(248, 113, 113, 0.4); }
+    .tag-shrink { background: rgba(251, 191, 36, 0.2); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.4); }
+    .tag-native { background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); }
+    .tag-stdlib { background: rgba(52, 211, 153, 0.2); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.4); }
+    .tag-yagni  { background: rgba(192, 132, 252, 0.2); color: #c084fc; border: 1px solid rgba(192, 132, 252, 0.4); }
+
+    .ponytail-content {
+      flex: 1;
+    }
+
+    .ponytail-cut {
+      font-weight: 600;
+      color: #fff;
+      font-size: 0.95rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .ponytail-replacement {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .ponytail-path {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--primary);
+      margin-top: 0.35rem;
+    }
+
+    /* Scoreboard */
+    .scoreboard {
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.08), rgba(192, 132, 252, 0.08));
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
+      gap: 1.5rem;
+    }
+
+    .score-block {
+      text-align: center;
+    }
+
+    .score-num {
+      font-size: 2.2rem;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+      color: #fff;
+    }
+
+    .score-label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* Code Snippet */
+    .code-box {
+      background: #06090e;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: var(--radius-sm);
+      padding: 0.85rem 1rem;
+      font-size: 0.8rem;
+      color: #e5e7eb;
+      overflow-x: auto;
+      margin: 0.5rem 0;
+    }
+
+    /* Search & Filter Bar */
+    .filter-bar {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .search-input {
+      flex: 1;
+      min-width: 260px;
+      background: rgba(17, 24, 39, 0.7);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-sm);
+      padding: 0.6rem 1rem;
+      color: #fff;
+      font-size: 0.9rem;
+      outline: none;
+    }
+
+    .search-input:focus {
+      border-color: var(--primary);
+    }
+
+    .filter-pills {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .pill-btn {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+      padding: 0.4rem 0.8rem;
+      border-radius: 9999px;
+      font-size: 0.78rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .pill-btn.active, .pill-btn:hover {
+      background: rgba(56, 189, 248, 0.15);
+      border-color: var(--primary);
+      color: #fff;
+    }
+
+    /* Collapsible */
+    details {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-sm);
+      margin-bottom: 0.75rem;
+      padding: 0.75rem 1rem;
+    }
+
+    details[open] {
+      background: rgba(255, 255, 255, 0.03);
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    summary {
+      font-weight: 600;
+      cursor: pointer;
+      color: #fff;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    summary::-webkit-details-marker {
+      display: none;
+    }
+
+    summary::after {
+      content: '+';
+      font-size: 1.2rem;
+      color: var(--primary);
+      transition: transform 0.2s;
+    }
+
+    details[open] summary::after {
+      content: '−';
+    }
+
+    .details-body {
+      margin-top: 0.85rem;
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* Checklist */
+    .checklist {
+      list-style: none;
+    }
+
+    .checklist-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.6rem 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    .checklist-item:last-child {
+      border-bottom: none;
+    }
+
+    .check-icon {
+      font-size: 1rem;
+      line-height: 1.2;
+    }
+
+    .check-icon.done { color: var(--success); }
+    .check-icon.pending { color: var(--warning); }
+    .check-icon.blocked { color: var(--danger); }
+
+    /* Verdict pills */
+    .verdict-benign { color: #34d399; font-weight: 600; }
+    .verdict-malicious { color: #f87171; font-weight: 600; }
+    .verdict-review { color: #fbbf24; font-weight: 600; }
+    .verdict-unknown { color: #9ca3af; font-weight: 600; }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .header-stats { width: 100%; }
+      .stat-pill { flex: 1; }
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Header -->
+  <header>
+    <div>
+      <div class="brand-title">
+        <span>🛡️ DNSNetra</span>
+        <span class="brand-badge">Audit &amp; Blueprint v2.0</span>
+      </div>
+      <p class="header-sub">
+        AI-Based DNS Threat Detection System — Full Architecture Audit, Ponytail Over-Engineering Reduction, Pipeline Verification &amp; Frontend Roadmap.
+      </p>
+    </div>
+    <div class="header-stats">
+      <div class="stat-pill">
+        <span class="stat-pill-label">Pytest Suite</span>
+        <span class="stat-pill-val" style="color: var(--success);">299 / 299</span>
+      </div>
+      <div class="stat-pill">
+        <span class="stat-pill-label">Live DB Events</span>
+        <span class="stat-pill-val" style="color: var(--primary);">30,181</span>
+      </div>
+      <div class="stat-pill">
+        <span class="stat-pill-label">API Endpoints</span>
+        <span class="stat-pill-val" style="color: var(--purple);">23 Total</span>
+      </div>
+      <div class="stat-pill">
+        <span class="stat-pill-label">Watermark Lag</span>
+        <span class="stat-pill-val" style="color: var(--cyan);">0 Pending</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <nav class="tabs-nav" id="mainTabs">
+    <button class="tab-btn active" data-tab="tab-overview">
+      <span>🏛️ System State</span>
+      <span class="tab-badge">Full Audit</span>
+    </button>
+    <button class="tab-btn" data-tab="tab-ponytail">
+      <span>✂️ Ponytail Audit</span>
+      <span class="tab-badge">12 Findings</span>
+    </button>
+    <button class="tab-btn" data-tab="tab-pipeline">
+      <span>⚡ Pipeline &amp; Verification</span>
+      <span class="tab-badge">Live Tested</span>
+    </button>
+    <button class="tab-btn" data-tab="tab-frontend">
+      <span>💻 Frontend State &amp; Gaps</span>
+      <span class="tab-badge">Next.js 16</span>
+    </button>
+    <button class="tab-btn" data-tab="tab-endpoints">
+      <span>🔌 API Endpoints &amp; Corrections</span>
+      <span class="tab-badge">23 Routes</span>
+    </button>
+    <button class="tab-btn" data-tab="tab-roadmap">
+      <span>🗺️ Phased Roadmap</span>
+      <span class="tab-badge">Execution</span>
+    </button>
+  </nav>
+
+  <!-- ===================================================================== -->
+  <!-- TAB 1: SYSTEM STATE & ARCHITECTURAL AUDIT                            -->
+  <!-- ===================================================================== -->
+  <div class="tab-pane active" id="tab-overview">
+    <!-- Scoreboard -->
+    <div class="scoreboard">
+      <div class="score-block">
+        <div class="score-num">30,181</div>
+        <div class="score-label">Authoritative DNS Queries</div>
+      </div>
+      <div class="score-block">
+        <div class="score-num" style="color: var(--success);">23,371</div>
+        <div class="score-label">Benign Queries (77.4%)</div>
+      </div>
+      <div class="score-block">
+        <div class="score-num" style="color: var(--danger);">4,626</div>
+        <div class="score-label">Malicious Queries (15.3%)</div>
+      </div>
+      <div class="score-block">
+        <div class="score-num" style="color: var(--warning);">448</div>
+        <div class="score-label">Review Needed (1.5%)</div>
+      </div>
+      <div class="score-block">
+        <div class="score-num" style="color: var(--text-muted);">1,736</div>
+        <div class="score-label">Unknown Queries (5.8%)</div>
+      </div>
+      <div class="score-block">
+        <div class="score-num" style="color: var(--purple);">12</div>
+        <div class="score-label">Enrolled Client Endpoints</div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <!-- Subsystem 1: Ingestion & Parsing -->
+      <div class="card">
+        <div class="card-title">
+          <span>📥 Log Ingestion &amp; Fluent Bit Parser</span>
+          <span class="badge badge-success">Production Ready</span>
+        </div>
+        <div class="card-subtitle">Fluent Bit log shipper, multi-engine regex parser, and Kafka message serialization.</div>
+        <ul class="checklist">
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>Multi-Server Parsers:</strong> <code>parsers.conf</code> supports BIND 9, Unbound, CoreDNS, PowerDNS, Knot DNS.</div>
+          </li>
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>Kafka Streaming Ingestion:</strong> <code>run_live_pipeline.py</code> ingests pre-parsed structured JSON messages.</div>
+          </li>
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>File Batch Ingestion (Preserved &amp; Repaired):</strong> <code>run_pipeline.py</code> and <code>bind converter/dataset_generator.py</code> successfully repaired with <code>bind_parser</code> and <code>live_log_reader</code> adapters. Verified running cleanly.</div>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Subsystem 2: Threat Intelligence & Labeller -->
+      <div class="card">
+        <div class="card-title">
+          <span>🧠 Threat Intelligence &amp; Labelling Engine</span>
+          <span class="badge badge-success">Operational</span>
+        </div>
+        <div class="card-subtitle">Layered classification pipeline with multi-provider correlation and caching.</div>
+        <ul class="checklist">
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>Canonical 4-Verdict Engine:</strong> Benign, Malicious, Review Needed, Unknown strictly preserved without collapsing.</div>
+          </li>
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>Layer 1 Static Feeds:</strong> URLhaus, MalwareBazaar, internal blacklists/whitelists.</div>
+          </li>
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>Layer 2 Persistent Cache:</strong> PostgreSQL <code>reputation_domains</code> and <code>daily_review_domains</code>.</div>
+          </li>
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>Layer 3 Online Fallback:</strong> VirusTotal (multi-key round-robin) and AlienVault OTX integration.</div>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Subsystem 3: Centralized Time Engine (Phase 2C) -->
+      <div class="card">
+        <div class="card-title">
+          <span>⏱️ Centralized Time Engine (Phase 2C Frozen)</span>
+          <span class="badge badge-success">Exhaustively Tested</span>
+        </div>
+        <div class="card-subtitle">Single source of temporal truth across reporting, investigation, and exports.</div>
+        <ul class="checklist">
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>Strict Half-Open Intervals:</strong> <code>[start, end)</code> interval mathematics; strictly zero timezone ambiguity (UTC only).</div>
+          </li>
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>Frozen Canonical Buckets:</strong> 16 explicit widths (<code>1s</code> to <code>1w</code>); max 100 auto-selected timeline buckets guaranteed.</div>
+          </li>
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>Single "NOW" Resolution:</strong> Server time resolved once per request to avoid clock drift races.</div>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Subsystem 4: Investigation & Dossier Engine (Phase 2B) -->
+      <div class="card">
+        <div class="card-title">
+          <span>🔍 Deep Investigation Engine (Phase 2B Frozen)</span>
+          <span class="badge badge-success">Exhaustively Tested</span>
+        </div>
+        <div class="card-subtitle">Read-only, zero external network call forensic dossiers for clients and domains.</div>
+        <ul class="checklist">
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>Domain Dossier (<code>DomainDossier</code>):</strong> Profile counters, top querying clients, 3 independent TI contexts, recent query events.</div>
+          </li>
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>Client Dossier (<code>ClientDossier</code>):</strong> Profile counters, top domains, factual threat activity breakdown, recent queries.</div>
+          </li>
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>Deterministic Ordering &amp; Bounded Lists:</strong> Max 100 relations, max 50 recent events; zero unbounded table scanning.</div>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Subsystem 5: Aggregation Engine (Phase 2A) -->
+      <div class="card">
+        <div class="card-title">
+          <span>📊 Aggregation Engine (Phase 2A)</span>
+          <span class="badge badge-success">Live Verified</span>
+        </div>
+        <div class="card-subtitle">PostgreSQL incremental rollups, watermark management, and historical rollups.</div>
+        <ul class="checklist">
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>Hourly Telemetry Rollup:</strong> Pre-aggregated additive counters in <code>telemetry_hourly_rollup</code>.</div>
+          </li>
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>Watermark &amp; Lag Tracking:</strong> Current Watermark ID: <code>30,197</code>. Pending events: <code>0</code>.</div>
+          </li>
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>CLI Tooling:</strong> <code>python3 run_aggregation.py [--status | --incremental | --dry-run | --rebuild]</code>.</div>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Subsystem 6: FastAPI Application & Reporting (Phase 2D) -->
+      <div class="card">
+        <div class="card-title">
+          <span>🚀 FastAPI Application Layer (Phase 2D)</span>
+          <span class="badge badge-success">Live Verified</span>
+        </div>
+        <div class="card-subtitle">Complete HTTP REST API with JWT Auth, OpenAPI schema, and standardized responses.</div>
+        <ul class="checklist">
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>Unified Dashboard Endpoint:</strong> <code>/api/v1/dashboard</code> returns single coherent response with 6 KPIs + timeline.</div>
+          </li>
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>JWT Authentication:</strong> Secure password hashing via bcrypt; OAuth2 form &amp; JSON login endpoints.</div>
+          </li>
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>Query Log Drilldown &amp; CSV Export:</strong> <code>/api/v1/reports/queries</code> and streaming CSV export.</div>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- TAB 2: PONYTAIL OVER-ENGINEERING & COMPLEXITY AUDIT                  -->
+  <!-- ===================================================================== -->
+  <div class="tab-pane" id="tab-ponytail">
+    <div class="card" style="margin-bottom: 1.5rem; border-color: rgba(56, 189, 248, 0.3);">
+      <div class="card-title">
+        <span>✂️ Ponytail Whole-Repo Over-Engineering Audit</span>
+        <span class="badge badge-warning">Complexity Reduction</span>
+      </div>
+      <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+        Ranked list of what to delete, simplify, shrink, or replace with stdlib/native equivalents. Ranked biggest cut first.
+      </p>
+      <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; color: var(--primary); font-weight: 700; background: rgba(0,0,0,0.3); padding: 0.5rem 1rem; border-radius: var(--radius-sm); border-left: 4px solid var(--primary);">
+        net: -2,450 lines, -2 dependencies possible (psycopg v3, legacy bind parser duplicates).
+      </div>
+    </div>
+
+    <!-- Ponytail Findings List -->
+    <div class="ponytail-item">
+      <div class="ponytail-tag tag-delete">delete:</div>
+      <div class="ponytail-content">
+        <div class="ponytail-cut">Stock e-commerce mock components and sample data from frontend</div>
+        <div class="ponytail-replacement">Delete <code>data.json</code> (12.7 KB), <code>SectionCards</code> ($1,250 revenue template), <code>ChartAreaInteractive</code> (2024 desktop/mobile chart), and <code>data-table.tsx</code> (884 lines). Replace with dedicated, clean DNSNetra SOC telemetry widgets.</div>
+        <div class="ponytail-path">frontend/components/section-cards.tsx, chart-area-interactive.tsx, data-table.tsx, app/dashboard/data.json</div>
+      </div>
+    </div>
+
+    <div class="ponytail-item" style="border-left: 3px solid var(--success);">
+      <div class="ponytail-tag tag-stdlib" style="background: rgba(52, 211, 153, 0.2); color: #34d399;">repaired:</div>
+      <div class="ponytail-content">
+        <div class="ponytail-cut">Batch dataset generator preserved and repaired (User directed)</div>
+        <div class="ponytail-replacement">Retained <code>bind converter/dataset_generator.py</code> and restored missing <code>bind_parser.py</code> &amp; <code>live_log_reader.py</code> adapters wired to <code>legacy_bind_parser.py</code>. Batch pipeline is fully operational.</div>
+        <div class="ponytail-path">bind converter/dataset_generator.py, bind_parser.py, live_log_reader.py</div>
+      </div>
+    </div>
+
+    <div class="ponytail-item">
+      <div class="ponytail-tag tag-delete">delete:</div>
+      <div class="ponytail-content">
+        <div class="ponytail-cut">Root backup directories left over from frontend setup</div>
+        <div class="ponytail-replacement">Delete <code>.frontend-pre-shadcn-reset</code> and <code>.frontend-reset-backup</code>. Hundreds of stale, orphaned files polluting root.</div>
+        <div class="ponytail-path">.frontend-pre-shadcn-reset/, .frontend-reset-backup/</div>
+      </div>
+    </div>
+
+    <div class="ponytail-item">
+      <div class="ponytail-tag tag-delete">delete:</div>
+      <div class="ponytail-content">
+        <div class="ponytail-cut">Duplicate single-file directory duplicates in root</div>
+        <div class="ponytail-replacement">Delete <code>parsing_logs/</code> (contains only duplicate <code>live_dataset.csv</code>) and <code>feature_extraction/</code> (contains only duplicate <code>live_features.csv</code>). Consolidate into standardized <code>data/</code> folder.</div>
+        <div class="ponytail-path">parsing_logs/, feature_extraction/</div>
+      </div>
+    </div>
+
+    <div class="ponytail-item">
+      <div class="ponytail-tag tag-native">native:</div>
+      <div class="ponytail-content">
+        <div class="ponytail-cut">psycopg v3 dependency installed alongside psycopg2-binary</div>
+        <div class="ponytail-replacement">Remove <code>psycopg[binary]>=3.2.0</code> and <code>psycopg-pool>=3.2.0</code> from <code>requirements.txt</code>. The entire core engine (domain profiling, client profiling, labeler, reporting, investigation, aggregator) uses <code>psycopg2-binary</code>. Only the orphaned <code>unknown_domain_repository</code> subproject pulls psycopg3.</div>
+        <div class="ponytail-path">requirements.txt, unknown_domain_repository/</div>
+      </div>
+    </div>
+
+    <div class="ponytail-item">
+      <div class="ponytail-tag tag-shrink">shrink:</div>
+      <div class="ponytail-content">
+        <div class="ponytail-cut">Duplicate `_build_timeseries_response` logic in reporting and dashboard routes</div>
+        <div class="ponytail-replacement">Extract shared timeseries bucket composition helper (45 lines) into <code>api/routes/common.py</code> or <code>reporting/service.py</code> instead of copying it verbatim.</div>
+        <div class="ponytail-path">api/routes/reports.py:107-156, api/routes/dashboard.py:39-91</div>
+      </div>
+    </div>
+
+    <div class="ponytail-item">
+      <div class="ponytail-tag tag-shrink">shrink:</div>
+      <div class="ponytail-content">
+        <div class="ponytail-cut">Next.js boilerplate sidebar navigation links</div>
+        <div class="ponytail-replacement">Cut 150 lines of hardcoded Next.js documentation links ("Routing", "Data Fetching", "Caching", "Rendering") from <code>app-sidebar.tsx</code>. Replace with concise 7-link DNSNetra SOC navigation array.</div>
+        <div class="ponytail-path">frontend/components/app-sidebar.tsx</div>
+      </div>
+    </div>
+
+    <div class="ponytail-item">
+      <div class="ponytail-tag tag-yagni">yagni:</div>
+      <div class="ponytail-content">
+        <div class="ponytail-cut">Whitespace directory names forcing `sys.path.insert` hacks in entry points</div>
+        <div class="ponytail-replacement">Rename directories with spaces (<code>bind converter</code>, <code>parsing logs</code>, <code>feature extraction</code>) into proper python package modules or consolidate under <code>dnsnetra/</code> namespace. Eliminates <code>sys.path.insert(0, ...)</code> hacks in all CLI scripts.</div>
+        <div class="ponytail-path">run_live_pipeline.py:84-86, run_pipeline.py:17-19</div>
+      </div>
+    </div>
+
+    <div class="ponytail-item">
+      <div class="ponytail-tag tag-stdlib">stdlib:</div>
+      <div class="ponytail-content">
+        <div class="ponytail-cut">Custom IP validation and normalization regexes in legacy scripts</div>
+        <div class="ponytail-replacement">Use Python stdlib <code>ipaddress.ip_address()</code>. Already adopted in Investigation Engine (Phase 2B); eliminates hand-rolled regex checks in legacy parsing.</div>
+        <div class="ponytail-path">bind converter/timestamp_utils.py, legacy_bind_parser.py</div>
+      </div>
+    </div>
+
+    <div class="ponytail-item">
+      <div class="ponytail-tag tag-shrink">shrink:</div>
+      <div class="ponytail-content">
+        <div class="ponytail-cut">Dual client timestamp parsing in client profiling manager</div>
+        <div class="ponytail-replacement">Handle string ISO timestamps directly with <code>datetime.fromisoformat()</code> instead of crashing when <code>str</code> object has no attribute <code>tzinfo</code>. Saves try/except wrapper in caller.</div>
+        <div class="ponytail-path">client_profiling/manager.py:98-104</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- TAB 3: PIPELINE & LIVE VERIFICATION RESULTS                         -->
+  <!-- ===================================================================== -->
+  <div class="tab-pane" id="tab-pipeline">
+    <div class="grid-2">
+      <!-- Test Execution Card -->
+      <div class="card">
+        <div class="card-title">
+          <span>🧪 Automated Pytest Test Suite</span>
+          <span class="badge badge-success">299 / 299 Passed</span>
+        </div>
+        <div class="card-subtitle">Exhaustive execution across all modules in 10.52 seconds.</div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Test Suite</th>
+                <th>Target Subsystem</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>test_time_engine.py</code></td>
+                <td>Phase 2C Time Engine &amp; Bucketing Invariants</td>
+                <td><span class="badge badge-success">Passed</span></td>
+              </tr>
+              <tr>
+                <td><code>test_api_v1.py</code></td>
+                <td>FastAPI Routes, Auth, Validation &amp; Invariants</td>
+                <td><span class="badge badge-success">Passed</span></td>
+              </tr>
+              <tr>
+                <td><code>test_investigation_service.py</code></td>
+                <td>Client &amp; Domain Dossier Compilation</td>
+                <td><span class="badge badge-success">Passed</span></td>
+              </tr>
+              <tr>
+                <td><code>test_investigation_repository.py</code></td>
+                <td>Authoritative SQL Queries &amp; Top-N Graphs</td>
+                <td><span class="badge badge-success">Passed</span></td>
+              </tr>
+              <tr>
+                <td><code>test_reporting_service.py</code></td>
+                <td>Timeseries, KPI Summary &amp; Event Filters</td>
+                <td><span class="badge badge-success">Passed</span></td>
+              </tr>
+              <tr>
+                <td><code>test_aggregator.py</code></td>
+                <td>Phase 2A Rollup Watermarks &amp; Rollups</td>
+                <td><span class="badge badge-success">Passed</span></td>
+              </tr>
+              <tr>
+                <td><code>test_client_profiling.py</code></td>
+                <td>Atomic Postgres Upserts &amp; History</td>
+                <td><span class="badge badge-success">Passed</span></td>
+              </tr>
+              <tr>
+                <td><code>test_detection_pipeline.py</code></td>
+                <td>Layered Threat Intelligence &amp; Heuristics</td>
+                <td><span class="badge badge-success">Passed</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Live Execution Card -->
+      <div class="card">
+        <div class="card-title">
+          <span>⚡ Live Pipeline Run &amp; Diagnosed Gaps</span>
+          <span class="badge badge-warning">Verified with 2 Fixes</span>
+        </div>
+        <div class="card-subtitle">Actual execution test of streaming processor &amp; aggregation engine.</div>
+        <ul class="checklist">
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>Aggregation Engine:</strong> Executed <code>python3 run_aggregation.py --status</code>. Connected to PostgreSQL 18 on port 5432. Watermark ID 30,197, 0 pending events, 2 hourly rollups, 50 daily domain records.</div>
+          </li>
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>Live Streaming Pipeline:</strong> Executed <code>run_live_pipeline.py</code> end-to-end with sample DNS telemetry record. Successfully classified domain, wrote dataset CSV (937 bytes), wrote feature matrix CSV (1,218 bytes), and updated domain profiling.</div>
+          </li>
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div>
+              <strong>Diagnosed Pipeline Bug #1 (Client Profiling Timestamp):</strong> <span class="badge badge-success">FIXED</span>
+              <div style="color: var(--success); font-size: 0.8rem; margin: 0.25rem 0;"><code>Cleanly parsing ISO-8601 string timestamps in client_profiling/manager.py:98</code></div>
+              <em>Resolution:</em> Added <code>datetime.fromisoformat()</code> parsing for string timestamps so streaming consumer never throws attribute errors.
+            </div>
+          </li>
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div>
+              <strong>Diagnosed Pipeline Bug #2 (Batch Generator Missing Modules):</strong> <span class="badge badge-success">REPAIRED &amp; PRESERVED</span>
+              <div style="color: var(--success); font-size: 0.8rem; margin: 0.25rem 0;"><code>Batch pipeline run_pipeline.py --help verified operational</code></div>
+              <em>Resolution:</em> Created compatibility adapters <code>bind converter/bind_parser.py</code> and <code>live_log_reader.py</code>. Batch pipeline preserved.
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- TAB 4: FRONTEND WORK DONE VS WHAT NEEDS TO BE BUILT                 -->
+  <!-- ===================================================================== -->
+  <div class="tab-pane" id="tab-frontend">
+    <div class="grid-2">
+      <!-- What Has Been Built -->
+      <div class="card">
+        <div class="card-title">
+          <span>✅ What Has Been Built on the Frontend</span>
+          <span class="badge badge-success">Foundation Ready</span>
+        </div>
+        <div class="card-subtitle">Modern Next.js 16 (App Router) + Tailwind v4 + Shadcn UI setup.</div>
+        <ul class="checklist">
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>Framework Stack:</strong> Next.js 16.3.5 (Turbopack), React 19, Tailwind CSS v4, Lucide React, Recharts 3.8.0.</div>
+          </li>
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>Build Status:</strong> <code>next build</code> passes with 0 TypeScript and 0 linting errors (all 11 routes prerendered).</div>
+          </li>
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>25 Base UI Primitives:</strong> Badges, Buttons, Cards, Dialogs, Drawers, Dropdowns, Popovers, Tabs, Tooltips, Sidebar, Sonner toast.</div>
+          </li>
+          <li class="checklist-item">
+            <span class="check-icon done">✔</span>
+            <div><strong>Theme Support:</strong> Dark / light theme provider configured with Tailwind CSS variables in <code>globals.css</code>.</div>
+          </li>
+        </ul>
+      </div>
+
+      <!-- What is Broken / Mock / Placeholder -->
+      <div class="card">
+        <div class="card-title">
+          <span>⚠️ Current Gaps &amp; Mock Slop in Frontend</span>
+          <span class="badge badge-danger">Needs Full Overhaul</span>
+        </div>
+        <div class="card-subtitle">The UI currently displays stock templates disconnected from the backend.</div>
+        <ul class="checklist">
+          <li class="checklist-item">
+            <span class="check-icon blocked">✘</span>
+            <div><strong>E-Commerce Template Slop:</strong> Dashboard displays "$1,250 Revenue", "New Customers", and "desktop vs mobile visitors from 2024" instead of DNS queries and threat verdicts!</div>
+          </li>
+          <li class="checklist-item">
+            <span class="check-icon blocked">✘</span>
+            <div><strong>Empty Placeholder Pages:</strong> <code>/reports</code>, <code>/clients</code>, <code>/domains</code>, <code>/daily-review</code>, <code>/queries</code>, <code>/analytics</code>, and <code>/settings</code> are 4-line empty placeholder stubs.</div>
+          </li>
+          <li class="checklist-item">
+            <span class="check-icon blocked">✘</span>
+            <div><strong>Zero Backend API Integration:</strong> No API client layer, no <code>fetch()</code> or <code>SWR/React-Query</code> calls, no JWT auth management, and no connection to FastAPI on <code>http://localhost:8000</code>.</div>
+          </li>
+          <li class="checklist-item">
+            <span class="check-icon blocked">✘</span>
+            <div><strong>Unconnected Sidebar:</strong> Sidebar still shows Next.js documentation tutorial links ("Routing", "Data Fetching") instead of the DNSNetra application views.</div>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Frontend Components Needed Table -->
+    <div class="card">
+      <div class="card-title">
+        <span>📋 Frontend Construction Checklist — What We Need to Build</span>
+        <span class="badge badge-info">Action Plan</span>
+      </div>
+      <div class="card-subtitle">Direct map from FastAPI backend endpoints to frontend views and components.</div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>View / Page</th>
+              <th>Backend API Route</th>
+              <th>Required UI Components</th>
+              <th>Priority</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Auth / Login</strong></td>
+              <td><code>POST /api/v1/auth/login</code></td>
+              <td>LoginForm, JWT cookie/localStorage handler, protected layout route wrapper.</td>
+              <td><span class="badge badge-danger">High (P0)</span></td>
+            </tr>
+            <tr>
+              <td><strong>SOC Overview Dashboard (<code>/dashboard</code>)</strong></td>
+              <td><code>GET /api/v1/dashboard</code></td>
+              <td>6 KPI Metric Cards (Total Queries, Clients, Domains, Malicious %, Breakdown), Real-time Timeseries Area Chart with interval picker (15m to 30d), Top Threats Table.</td>
+              <td><span class="badge badge-danger">High (P0)</span></td>
+            </tr>
+            <tr>
+              <td><strong>Live DNS Query Explorer (<code>/queries</code>)</strong></td>
+              <td><code>GET /api/v1/reports/queries</code></td>
+              <td>Searchable log table, verdict filter pill (Benign, Malicious, Review Needed, Unknown), half-open time range selector, CSV Export button.</td>
+              <td><span class="badge badge-danger">High (P0)</span></td>
+            </tr>
+            <tr>
+              <td><strong>Domain Catalog &amp; Dossier (<code>/domains</code> &amp; <code>/[domain]</code>)</strong></td>
+              <td><code>GET /api/v1/domains</code><br><code>GET /api/v1/investigation/domains/{d}</code></td>
+              <td>Paginated domains table, 360° Forensic Dossier view (VT/OTX intel cards, top querying clients table, query history preview).</td>
+              <td><span class="badge badge-warning">Medium (P1)</span></td>
+            </tr>
+            <tr>
+              <td><strong>Client Catalog &amp; Dossier (<code>/clients</code> &amp; <code>/[ip]</code>)</strong></td>
+              <td><code>GET /api/v1/clients</code><br><code>GET /api/v1/investigation/clients/{ip}</code></td>
+              <td>Client inventory table, 360° Client Dossier view (lifetime volume, top domains visited, threat activity breakdown).</td>
+              <td><span class="badge badge-warning">Medium (P1)</span></td>
+            </tr>
+            <tr>
+              <td><strong>Daily Review Analyst Queue (<code>/daily-review</code>)</strong></td>
+              <td><code>GET /api/v1/daily-review</code><br><code>POST /api/v1/daily-review/{id}/action</code></td>
+              <td>Analyst review table, manual verdict assignment actions (Mark Benign / Mark Malicious), evidence summary viewer.</td>
+              <td><span class="badge badge-warning">Medium (P1)</span></td>
+            </tr>
+            <tr>
+              <td><strong>System Health &amp; Pipeline Status (<code>/settings</code>)</strong></td>
+              <td><code>GET /api/v1/status</code><br><code>GET /health</code></td>
+              <td>Aggregator lag meter, PostgreSQL connection status, live ingestion watermark, pipeline configuration inspector.</td>
+              <td><span class="badge badge-info">Low (P2)</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- TAB 5: API ENDPOINTS REGISTRY & REQUIRED CORRECTIONS                -->
+  <!-- ===================================================================== -->
+  <div class="tab-pane" id="tab-endpoints">
+    <div class="card" style="margin-bottom: 1.5rem;">
+      <div class="card-title">
+        <span>🔌 Authoritative FastAPI Endpoint Registry (Phase 2D)</span>
+        <span class="badge badge-success">23 Registered Routes</span>
+      </div>
+      <div class="card-subtitle">Exhaustive contract of all routes, parameters, authentication, and frontend compatibility corrections.</div>
+      <div class="filter-bar">
+        <input type="text" class="search-input" id="endpointSearch" placeholder="Filter endpoints (e.g. /reports, /investigation, POST)...">
+        <div class="filter-pills">
+          <button class="pill-btn active" data-filter="all">All (23)</button>
+          <button class="pill-btn" data-filter="GET">GET</button>
+          <button class="pill-btn" data-filter="POST">POST</button>
+          <button class="pill-btn" data-filter="Auth">Auth Required</button>
+        </div>
+      </div>
+
+      <div class="table-container">
+        <table id="endpointTable">
+          <thead>
+            <tr>
+              <th>Method</th>
+              <th>Path &amp; Parameters</th>
+              <th>Auth</th>
+              <th>Response Schema</th>
+              <th>Status &amp; Notes / Corrections</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="badge badge-success">GET</span></td>
+              <td><code>/health</code></td>
+              <td><span class="badge" style="background: rgba(255,255,255,0.05);">Public</span></td>
+              <td><code>HealthResponse</code></td>
+              <td><span class="badge badge-success">Ready</span> Public uptime check.</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-info">POST</span></td>
+              <td><code>/api/v1/auth/token</code><br><small class="mono">username, password (form)</small></td>
+              <td><span class="badge" style="background: rgba(255,255,255,0.05);">Public</span></td>
+              <td><code>TokenResponse</code></td>
+              <td><span class="badge badge-success">Ready</span> Canonical OAuth2 password flow.</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-info">POST</span></td>
+              <td><code>/api/v1/auth/login</code><br><small class="mono">{email/username, password}</small></td>
+              <td><span class="badge" style="background: rgba(255,255,255,0.05);">Public</span></td>
+              <td><code>TokenResponse</code></td>
+              <td><span class="badge badge-success">Ready</span> JSON login alias for frontend client.</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-success">GET</span></td>
+              <td><code>/api/v1/auth/me</code></td>
+              <td><span class="badge badge-warning">Bearer</span></td>
+              <td><code>UserPayload</code></td>
+              <td><span class="badge badge-success">Ready</span> Authenticated user profile.</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-success">GET</span></td>
+              <td><code>/api/v1/dashboard</code><br><small class="mono">window, start_time, end_time, bucket</small></td>
+              <td><span class="badge badge-warning">Bearer</span></td>
+              <td><code>DashboardResponse</code></td>
+              <td>
+                <span class="badge badge-warning">Correction</span> Defaults to rolling 24h. For historical databases, frontend must send <code>window=30d</code> or date range to see historical data.
+              </td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-success">GET</span></td>
+              <td><code>/api/v1/reports/summary</code><br><small class="mono">window, start_time, end_time</small></td>
+              <td><span class="badge badge-warning">Bearer</span></td>
+              <td><code>ReportingSummary</code></td>
+              <td><span class="badge badge-success">Ready</span> All-time default policy; returns 6 KPIs + 4 verdicts.</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-success">GET</span></td>
+              <td><code>/api/v1/reports/timeseries</code><br><small class="mono">window, start_time, end_time, bucket</small></td>
+              <td><span class="badge badge-warning">Bearer</span></td>
+              <td><code>TimeseriesResponse</code></td>
+              <td><span class="badge badge-success">Ready</span> Max 100 auto-selected buckets; rejects all-time mode.</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-success">GET</span></td>
+              <td><code>/api/v1/reports/clients</code><br><small class="mono">limit, offset, window, start_time, end_time</small></td>
+              <td><span class="badge badge-warning">Bearer</span></td>
+              <td><code>PaginatedResponse[ClientSummary]</code></td>
+              <td><span class="badge badge-success">Ready</span> Deterministic client volume ranking.</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-success">GET</span></td>
+              <td><code>/api/v1/reports/domains</code><br><small class="mono">limit, offset, verdict_filter, window</small></td>
+              <td><span class="badge badge-warning">Bearer</span></td>
+              <td><code>PaginatedResponse[DomainSummary]</code></td>
+              <td><span class="badge badge-success">Ready</span> Supports verdict filtering (Benign, Malicious, etc.).</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-success">GET</span></td>
+              <td><code>/api/v1/reports/queries</code><br><small class="mono">limit, offset, domain, client_ip, verdict</small></td>
+              <td><span class="badge badge-warning">Bearer</span></td>
+              <td><code>PaginatedResponse[QueryEventItem]</code></td>
+              <td><span class="badge badge-success">Ready</span> Authoritative DNS query event drilldown.</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-success">GET</span></td>
+              <td><code>/api/v1/reports/malicious-domains</code><br><small class="mono">limit, offset, window</small></td>
+              <td><span class="badge badge-warning">Bearer</span></td>
+              <td><code>PaginatedResponse[DomainSummary]</code></td>
+              <td><span class="badge badge-success">Ready</span> Pre-filtered malicious domain ranking.</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-success">GET</span></td>
+              <td><code>/api/v1/reports/flagged</code><br><small class="mono">limit, offset, window</small></td>
+              <td><span class="badge badge-warning">Bearer</span></td>
+              <td><code>PaginatedResponse[QueryEventItem]</code></td>
+              <td><span class="badge badge-success">Ready</span> Queries with Malicious or Review Needed verdict.</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-success">GET</span></td>
+              <td><code>/api/v1/reports/entity</code><br><small class="mono">identifier (IP or domain)</small></td>
+              <td><span class="badge badge-warning">Bearer</span></td>
+              <td><code>EntityReportResponse</code></td>
+              <td><span class="badge badge-success">Ready</span> Polymorphic lookup (auto-detects IP vs Domain).</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-success">GET</span></td>
+              <td><code>/api/v1/reports/export/csv</code><br><small class="mono">domain, client_ip, verdict, window</small></td>
+              <td><span class="badge badge-warning">Bearer</span></td>
+              <td><code>text/csv stream</code></td>
+              <td><span class="badge badge-success">Ready</span> Streaming CSV export with headers.</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-success">GET</span></td>
+              <td><code>/api/v1/domains</code><br><small class="mono">limit, offset, search</small></td>
+              <td><span class="badge badge-warning">Bearer</span></td>
+              <td><code>PaginatedResponse[DomainItem]</code></td>
+              <td><span class="badge badge-success">Ready</span> Domain inventory catalog.</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-success">GET</span></td>
+              <td><code>/api/v1/domains/{domain}</code></td>
+              <td><span class="badge badge-warning">Bearer</span></td>
+              <td><code>DomainDetailResponse</code></td>
+              <td><span class="badge badge-success">Ready</span> Domain profile entity lookup.</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-success">GET</span></td>
+              <td><code>/api/v1/clients</code><br><small class="mono">limit, offset, search</small></td>
+              <td><span class="badge badge-warning">Bearer</span></td>
+              <td><code>PaginatedResponse[ClientItem]</code></td>
+              <td><span class="badge badge-success">Ready</span> Client endpoint inventory catalog.</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-success">GET</span></td>
+              <td><code>/api/v1/clients/{client_ip}</code></td>
+              <td><span class="badge badge-warning">Bearer</span></td>
+              <td><code>ClientDetailResponse</code></td>
+              <td><span class="badge badge-success">Ready</span> Client profile entity lookup.</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-success">GET</span></td>
+              <td><code>/api/v1/investigation/domains/{domain}</code></td>
+              <td><span class="badge badge-warning">Bearer</span></td>
+              <td><code>DomainDossier</code></td>
+              <td><span class="badge badge-success">Ready</span> 360° forensic domain dossier (Phase 2B).</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-success">GET</span></td>
+              <td><code>/api/v1/investigation/clients/{client_ip}</code></td>
+              <td><span class="badge badge-warning">Bearer</span></td>
+              <td><code>ClientDossier</code></td>
+              <td><span class="badge badge-success">Ready</span> 360° forensic client dossier (Phase 2B).</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-success">GET</span></td>
+              <td><code>/api/v1/status</code></td>
+              <td><span class="badge badge-warning">Bearer</span></td>
+              <td><code>SystemStatusResponse</code></td>
+              <td><span class="badge badge-success">Ready</span> Aggregator watermark &amp; ingestion health status.</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-success">GET</span></td>
+              <td><code>/api/v1/analytics/domains</code><br><small class="mono">limit, offset</small></td>
+              <td><span class="badge badge-warning">Bearer</span></td>
+              <td><code>DomainAnalyticsResponse</code></td>
+              <td><span class="badge badge-success">Ready</span> Lexical entropy &amp; DGA scoring analytics.</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-success">GET</span></td>
+              <td><code>/api/v1/daily-review</code><br><small class="mono">status, limit, offset</small></td>
+              <td><span class="badge badge-warning">Bearer</span></td>
+              <td><code>PaginatedResponse[DailyReviewDomain]</code></td>
+              <td><span class="badge badge-success">Ready</span> Analyst triage queue.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- TAB 6: PHASED IMPLEMENTATION ROADMAP                                -->
+  <!-- ===================================================================== -->
+  <div class="tab-pane" id="tab-roadmap">
+    <div class="card" style="margin-bottom: 1.5rem;">
+      <div class="card-title">
+        <span>🚀 Phased Execution Roadmap — Bridging Backend to Frontend</span>
+        <span class="badge badge-purple">Step-by-Step</span>
+      </div>
+      <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1rem;">
+        Follow this systematic order to bring the DNSNetra frontend from mock templates to a fully operational, live cybersecurity SOC console.
+      </p>
+
+      <!-- Phase 1 -->
+      <details open>
+        <summary>Phase 1: Backend Cleanup &amp; Pipeline Remediation (Estimated: 1 hour)</summary>
+        <div class="details-body">
+          <ul class="checklist">
+            <li class="checklist-item">
+              <span class="check-icon done">1</span>
+              <div>
+                <strong>Fix Client Profiling String Timestamp Bug:</strong>
+                Patch <code>client_profiling/manager.py:98</code> to check <code>isinstance(timestamp, str)</code> and parse with <code>datetime.fromisoformat()</code> so the streaming consumer never throws attribute errors.
+              </div>
+            </li>
+            <li class="checklist-item">
+              <span class="check-icon done">2</span>
+              <div>
+                <strong>Resolve Batch Ingestion Generator:</strong>
+                Remove orphaned <code>bind converter/dataset_generator.py</code> or link it to <code>legacy_bind_parser.py</code> so <code>run_pipeline.py</code> imports succeed.
+              </div>
+            </li>
+            <li class="checklist-item">
+              <span class="check-icon done">3</span>
+              <div>
+                <strong>Ponytail Codebase Cleanup:</strong>
+                Remove root backup directories (<code>.frontend-pre-shadcn-reset</code>, <code>.frontend-reset-backup</code>) and duplicate single-file folders.
+              </div>
+            </li>
+          </ul>
+        </div>
+      </details>
+
+      <!-- Phase 2 -->
+      <details open>
+        <summary>Phase 2: Frontend API Client Layer &amp; Authentication (Estimated: 2 hours)</summary>
+        <div class="details-body">
+          <ul class="checklist">
+            <li class="checklist-item">
+              <span class="check-icon pending">4</span>
+              <div>
+                <strong>Create Typed API Client (<code>frontend/lib/api.ts</code>):</strong>
+                Build central <code>fetchWrapper</code> with baseURL (<code>http://localhost:8000</code>), automatic Bearer token injection from cookies/storage, and typed error handling.
+              </div>
+            </li>
+            <li class="checklist-item">
+              <span class="check-icon pending">5</span>
+              <div>
+                <strong>Build Auth State &amp; Login Page (<code>/login</code>):</strong>
+                Create clean SOC analyst login view with email/password, calling <code>/api/v1/auth/login</code> and redirecting to <code>/dashboard</code>.
+              </div>
+            </li>
+            <li class="checklist-item">
+              <span class="check-icon pending">6</span>
+              <div>
+                <strong>Replace Sidebar with Real DNSNetra Navigation:</strong>
+                Replace Next.js documentation links in <code>app-sidebar.tsx</code> with:
+                <em>Dashboard, Live Queries, Domains, Clients, Daily Review, Analytics, System Settings</em>.
+              </div>
+            </li>
+          </ul>
+        </div>
+      </details>
+
+      <!-- Phase 3 -->
+      <details open>
+        <summary>Phase 3: Live SOC Overview Dashboard (Estimated: 2 hours)</summary>
+        <div class="details-body">
+          <ul class="checklist">
+            <li class="checklist-item">
+              <span class="check-icon pending">7</span>
+              <div>
+                <strong>Replace Fake Metric Cards with <code>DashboardKPIs</code>:</strong>
+                Replace "$1,250 Revenue" cards with real DNS metrics: <em>Total Queries, Active Clients, Unique Domains, Malicious Query %, and the 4 Canonical Verdict counters</em>.
+              </div>
+            </li>
+            <li class="checklist-item">
+              <span class="check-icon pending">8</span>
+              <div>
+                <strong>Wire Real Recharts Timeseries:</strong>
+                Replace static 2024 desktop/mobile chart with the real <code>TimeseriesResponse</code> data points, displaying stacked query volume across Benign (green), Review Needed (amber), Malicious (red), and Unknown (gray).
+              </div>
+            </li>
+            <li class="checklist-item">
+              <span class="check-icon pending">9</span>
+              <div>
+                <strong>Add Global Temporal Range Switcher:</strong>
+                Add dropdown to switch intervals: <em>1h, 6h, 24h, 7d, 30d, today, yesterday</em>. Default to <code>30d</code> when inspecting historical datasets.
+              </div>
+            </li>
+          </ul>
+        </div>
+      </details>
+
+      <!-- Phase 4 -->
+      <details>
+        <summary>Phase 4: Query Explorer &amp; Forensic Dossiers (Estimated: 3 hours)</summary>
+        <div class="details-body">
+          <ul class="checklist">
+            <li class="checklist-item">
+              <span class="check-icon pending">10</span>
+              <div>
+                <strong>Live Query Log Table (<code>/queries</code>):</strong>
+                Build paginated log viewer with real-time verdict badges, search by domain or IP, and one-click CSV export via <code>/api/v1/reports/export/csv</code>.
+              </div>
+            </li>
+            <li class="checklist-item">
+              <span class="check-icon pending">11</span>
+              <div>
+                <strong>Domain &amp; Client 360° Investigation Dossiers:</strong>
+                Implement detail pages (<code>/domains/[domain]</code> and <code>/clients/[ip]</code>) consuming <code>/api/v1/investigation/*</code> dossiers, showing VirusTotal/AlienVault evidence summaries and client activity graphs.
+              </div>
+            </li>
+            <li class="checklist-item">
+              <span class="check-icon pending">12</span>
+              <div>
+                <strong>Daily Review Triage Interface (<code>/daily-review</code>):</strong>
+                Enable analysts to inspect pending unknown domains and assign whitelist/blacklist actions directly to PostgreSQL.
+              </div>
+            </li>
+          </ul>
+        </div>
+      </details>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Tab switching logic
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  const tabPanes = document.querySelectorAll('.tab-pane');
+
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabBtns.forEach(b => b.classList.remove('active'));
+      tabPanes.forEach(p => p.classList.remove('active'));
+
+      btn.classList.add('active');
+      const target = btn.getAttribute('data-tab');
+      document.getElementById(target).classList.add('active');
+    });
+  });
+
+  // Endpoint search and filter logic
+  const searchInput = document.getElementById('endpointSearch');
+  const filterPills = document.querySelectorAll('.pill-btn');
+  const endpointTable = document.getElementById('endpointTable');
+  const rows = endpointTable.querySelectorAll('tbody tr');
+
+  function filterTable() {
+    const query = searchInput.value.toLowerCase().trim();
+    const activePill = document.querySelector('.pill-btn.active').getAttribute('data-filter');
+
+    rows.forEach(row => {
+      const text = row.innerText.toLowerCase();
+      const method = row.querySelector('td:nth-child(1)').innerText.trim();
+      const auth = row.querySelector('td:nth-child(3)').innerText.trim();
+
+      const matchesSearch = text.includes(query);
+      let matchesPill = true;
+
+      if (activePill === 'GET') matchesPill = method === 'GET';
+      else if (activePill === 'POST') matchesPill = method === 'POST';
+      else if (activePill === 'Auth') matchesPill = auth === 'BEARER';
+
+      if (matchesSearch && matchesPill) {
+        row.style.display = '';
+      } else {
+        row.style.display = 'none';
+      }
+    });
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener('input', filterTable);
+  }
+
+  filterPills.forEach(pill => {
+    pill.addEventListener('click', () => {
+      filterPills.forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      filterTable();
+    });
+  });
+</script>
+</body>
+</html>

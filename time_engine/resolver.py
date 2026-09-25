@@ -63,6 +63,11 @@ PRESET_REGISTRY: Dict[str, PresetSpec] = {
         duration_seconds=900,
         default_bucket=BucketSpec(bucket_seconds=60, bucket_label="1m"),
     ),
+    "30m": PresetSpec(
+        preset_name="30m",
+        duration_seconds=1800,
+        default_bucket=BucketSpec(bucket_seconds=60, bucket_label="1m"),
+    ),
     "1h": PresetSpec(
         preset_name="1h",
         duration_seconds=3600,
@@ -72,6 +77,11 @@ PRESET_REGISTRY: Dict[str, PresetSpec] = {
         preset_name="6h",
         duration_seconds=21600,
         default_bucket=BucketSpec(bucket_seconds=900, bucket_label="15m"),
+    ),
+    "12h": PresetSpec(
+        preset_name="12h",
+        duration_seconds=43200,
+        default_bucket=BucketSpec(bucket_seconds=1800, bucket_label="30m"),
     ),
     "24h": PresetSpec(
         preset_name="24h",

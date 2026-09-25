@@ -92,15 +92,18 @@ def list_domains(
     eff_limit = page_size if (page_size is not None and page_size >= 1) else limit
     eff_offset = ((page - 1) * eff_limit) if (page is not None and page >= 1) else offset
 
-    status_enum = None
+    status_enum: Optional[ReviewStatus] = ReviewStatus.REVIEW_NEEDED
     if status_filter:
-        try:
-            status_enum = ReviewStatus(status_filter.lower())
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid status filter '{status_filter}'. Allowed: {[s.value for s in ReviewStatus]}",
-            )
+        if status_filter.lower() == "all":
+            status_enum = None
+        else:
+            try:
+                status_enum = ReviewStatus(status_filter.lower())
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid status filter '{status_filter}'. Allowed: {[s.value for s in ReviewStatus]}",
+                )
 
     records, total = list_daily_review_domains(
         status=status_enum,

@@ -1,1 +1,3 @@
-timestamp,client_ip,domain,query_type,response_code,resolved_ip,ttl,raw_log,source_file,event_id,timestamp_iso8601,timestamp_unix,date,time,year,month,day,hour,minute,second,millisecond,weekday,week_number,day_of_year,is_weekend,timezone,hostname,server_name,client_port,resolver_ip,transport_protocol,query_class,subdomain,registered_domain,tld,is_ipv4,is_ipv6,log_category,severity,thread_id,process_id,log_line_number
+version https://git-lfs.github.com/spec/v1
+oid sha256:05bccb548fc44c6080fdf57b6ddce00a15706ab719fd94126d8798b942816a49
+size 422

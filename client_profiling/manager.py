@@ -97,7 +97,14 @@ def process_query(
     
     if timestamp is None:
         event_ts = datetime.now(timezone.utc)
-    elif timestamp.tzinfo is None:
+    elif isinstance(timestamp, str):
+        try:
+            cleaned_ts = timestamp.strip().replace("Z", "+00:00")
+            dt = datetime.fromisoformat(cleaned_ts)
+            event_ts = dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            event_ts = datetime.now(timezone.utc)
+    elif getattr(timestamp, "tzinfo", None) is None:
         event_ts = timestamp.replace(tzinfo=timezone.utc)
     else:
         event_ts = timestamp.astimezone(timezone.utc)

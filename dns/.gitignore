@@ -1,0 +1,25 @@
+.DS_Store
+.next/
+frontend/.next/
+frontend/node_modules/
+node_modules/
+.playwright-mcp/
+*.pyc
+__pycache__/
+*.png
+
+# Frontend build/cache
+frontend/.next/
+frontend/node_modules/
+
+# Archives / generated files
+frontend.zip
+
+# Backup/database files
+*.db.bak
+
+# Local duplicate/reference downloads
+dns (1)/
+*.db.bak
+*.backup_*
+dashboard.db

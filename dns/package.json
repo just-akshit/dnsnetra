@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@modelcontextprotocol/server-sequential-thinking": "^2026.7.4",
+    "playwright": "^1.62.1"
+  }
+}

@@ -1,0 +1,24 @@
+# Environments
+.env
+api.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+myenv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Logs
+logs/
+*.log
+
+# Dataset (Optional, depends if you want to track them)
+# live_dataset.csv
+# live_features.csv

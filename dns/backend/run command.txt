@@ -1,0 +1,45 @@
+# BATCH RUN COMMANDS
+cd /Users/akshit/Developer/dns
+
+# Generate raw DNS traffic data
+./backend/.venv/bin/python backend/data/generate_dataset.py
+
+# Feature extraction
+./backend/.venv/bin/python backend/feature\ extraction/extract_features.py
+
+# Labeling Data
+./backend/.venv/bin/python backend/labeler/label_dataset.py
+
+# Aggregation and Database Insertion
+./backend/.venv/bin/python backend/run_aggregation.py
+
+
+# LIVE STREAMING PIPELINE COMMANDS
+cd /Users/akshit/Developer/dns
+
+# Run Fluent Bit config
+fluent-bit -c backend/fluent-bit.conf
+
+# Start backend FastAPI server
+cd backend && .venv/bin/uvicorn api.main:app --reload --port 8000
+
+# Start Frontend (in new terminal)
+cd frontend && npm run dev
+
+# =========================================================
+# DEMO COMMANDS (Show Existing Data on Dashboard)
+# Run these in three separate terminals to showcase the UI
+# =========================================================
+
+# TERMINAL 1: Prepare the existing data (Run once)
+# This loads your dataset into dashboard.db so the UI can read it instantly
+cd /Users/akshit/Developer/dns
+./backend/.venv/bin/python backend/run_aggregation.py --source auto
+
+# TERMINAL 2: Start the Backend API
+cd /Users/akshit/Developer/dns
+./backend/.venv/bin/uvicorn api.main:app --reload --port 8000
+
+# TERMINAL 3: Start the Frontend Dashboard
+cd /Users/akshit/Developer/dns/frontend
+npm run dev

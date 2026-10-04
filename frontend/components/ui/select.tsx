@@ -7,13 +7,19 @@ import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
 const Select = SelectPrimitive.Root
 
-function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
+const SelectGroupContext = React.createContext(false)
+
+function SelectGroup({ className, children, ...props }: SelectPrimitive.Group.Props) {
   return (
-    <SelectPrimitive.Group
-      data-slot="select-group"
-      className={cn("scroll-my-1 p-1", className)}
-      {...props}
-    />
+    <SelectGroupContext.Provider value={true}>
+      <SelectPrimitive.Group
+        data-slot="select-group"
+        className={cn("scroll-my-1 p-1", className)}
+        {...props}
+      >
+        {children}
+      </SelectPrimitive.Group>
+    </SelectGroupContext.Provider>
   )
 }
 
@@ -97,9 +103,19 @@ function SelectContent({
 function SelectLabel({
   className,
   ...props
-}: SelectPrimitive.GroupLabel.Props) {
+}: React.ComponentProps<"div">) {
+  const isInsideGroup = React.useContext(SelectGroupContext)
+  if (isInsideGroup) {
+    return (
+      <SelectPrimitive.GroupLabel
+        data-slot="select-label"
+        className={cn("px-1.5 py-1 text-xs text-muted-foreground", className)}
+        {...(props as SelectPrimitive.GroupLabel.Props)}
+      />
+    )
+  }
   return (
-    <SelectPrimitive.GroupLabel
+    <div
       data-slot="select-label"
       className={cn("px-1.5 py-1 text-xs text-muted-foreground", className)}
       {...props}

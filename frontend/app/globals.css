@@ -144,3 +144,46 @@
     transition-duration: 0.01ms !important;
   }
 }
+/* ---------------------------------------------------------------------------
+   Auth theme (login / signup). One accent, one radius, always light.
+   Change --auth-accent to rebrand; swap the wordmark face in app/layout.tsx.
+--------------------------------------------------------------------------- */
+.auth-theme {
+  --auth-bg: oklch(0.945 0.005 250);
+  --auth-panel: oklch(0.99 0.002 250);
+  --auth-visual: oklch(0.925 0.007 250);
+  --auth-ink: oklch(0.2 0.02 255);
+  --auth-muted: oklch(0.46 0.02 255);
+  --auth-line: oklch(0.87 0.008 255);
+  --auth-accent: oklch(0.45 0.1 215);
+  --auth-danger: oklch(0.5 0.17 25);
+  --auth-radius: 0.875rem;
+  color-scheme: light;
+  background: var(--auth-bg);
+  color: var(--auth-ink);
+  caret-color: var(--auth-accent);
+}
+.auth-theme ::selection {
+  background: color-mix(in oklab, var(--auth-accent) 22%, white);
+  color: var(--auth-ink);
+}
+.auth-theme :focus-visible {
+  outline: 2px solid var(--auth-accent);
+  outline-offset: 2px;
+}
+.auth-theme a {
+  text-underline-offset: 0.2em;
+}
+.auth-brand-font {
+  font-family: var(--font-brand), var(--font-geist-sans), system-ui, sans-serif;
+}
+@keyframes auth-error-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: none; }
+}
+.auth-error-in {
+  animation: auth-error-in 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-error-in { animation: none; }
+}

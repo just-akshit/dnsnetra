@@ -211,7 +211,7 @@ export function TimeRangePicker({
           </div>
 
           {/* Presets List (Right) */}
-          <div className="w-full sm:w-[170px] p-3 flex flex-col gap-1 bg-muted/10">
+          <div className="w-full sm:w-[170px] p-3 flex flex-col gap-1 bg-muted/10 max-h-[340px] overflow-y-auto">
             <div className="px-2.5 py-1 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
               Presets
             </div>

@@ -14,8 +14,15 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
+
+# Ensure project root is in sys.path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,6 +39,7 @@ from api.routes.domains import router as domains_router
 from api.routes.investigation import router as investigation_router
 from api.routes.reports import router as reports_router
 from api.routes.status import router as status_router
+from api.routes.users import router as users_router
 from investigation.schemas import (
     EntityNotFoundError,
     InvalidEntityError,
@@ -63,16 +71,31 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+from api.csrf import get_allowed_origins
+
 # ---------------------------------------------------------------------------
-# Middleware
+# Middleware: CORS & Security Headers
 # ---------------------------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=sorted(list(get_allowed_origins())),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With", "Origin", "Referer"],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """Enforce defensive HTTP security headers on all responses."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    env = (os.getenv("DNSNETRA_ENV") or os.getenv("APP_ENV") or "development").lower()
+    if env in ("production", "prod"):
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 # ---------------------------------------------------------------------------
 # Global Exception Handlers
@@ -138,6 +161,7 @@ app.include_router(investigation_router)
 app.include_router(status_router)
 app.include_router(analytics_router)
 app.include_router(daily_review_router)
+app.include_router(users_router)
 
 
 # ---------------------------------------------------------------------------
@@ -161,4 +185,4 @@ def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("api.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("api.main:app", host="0.0.0.0", port=8000, reload=True, app_dir=str(PROJECT_ROOT))

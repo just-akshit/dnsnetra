@@ -24,9 +24,19 @@ import {
   FilterIcon,
 } from "lucide-react"
 import { toast } from "sonner"
+import { useRouter } from "next/navigation"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { cn } from "cn"
 
 function DashboardContent() {
+  const router = useRouter()
   const { backendParams, isLiveRefresh, setIsLiveRefresh, label } = useTimeRange()
 
   const [data, setData] = React.useState<DashboardResponse | null>(null)
@@ -143,17 +153,59 @@ function DashboardContent() {
 
         {/* Global Toolbar Controls */}
         <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
-          {/* Add Filter shortcut */}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleScrollToFilters}
-            className="h-8 gap-1.5 text-xs font-medium cursor-pointer"
-          >
-            <FilterIcon className="h-3.5 w-3.5 text-muted-foreground" />
-            <span>Add filter</span>
-          </Button>
+          {/* Add Filter shortcut dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 text-xs font-medium cursor-pointer"
+                />
+              }
+            >
+              <FilterIcon className="h-3.5 w-3.5 text-muted-foreground" />
+              <span>Add filter</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
+                Filter by Verdict
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-xs cursor-pointer"
+                onClick={() => router.push("/domains?verdict=Malicious")}
+              >
+                Domains: Malicious
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-xs cursor-pointer"
+                onClick={() => router.push("/domains?verdict=Review+Needed")}
+              >
+                Domains: Review Needed
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-xs cursor-pointer"
+                onClick={() => router.push("/queries?verdict=Malicious")}
+              >
+                Queries: Malicious Log
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-xs cursor-pointer"
+                onClick={() => router.push("/queries?verdict=Review+Needed")}
+              >
+                Queries: Review Needed
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-xs cursor-pointer text-muted-foreground"
+                onClick={handleScrollToFilters}
+              >
+                Scroll to Overview Table
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {/* Live Refresh Button */}
           <Button

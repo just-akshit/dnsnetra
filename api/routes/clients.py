@@ -54,12 +54,14 @@ def list_clients(
     page: Optional[int] = Query(None, ge=1, description="Legacy page number alias"),
     page_size: Optional[int] = Query(None, ge=1, le=1000, description="Legacy page size alias"),
     search: Optional[str] = Query(None, description="Filter by client IP substring"),
+    sort: Optional[str] = Query(None, description="Sort column (e.g. total_queries, unique_domains, client_ip)"),
+    order: Optional[str] = Query(None, description="Sort direction (asc, desc)"),
     window: Optional[str] = Query(None),
     start_time: Optional[str] = Query(None),
     end_time: Optional[str] = Query(None),
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> PaginatedResponse[ClientSummaryItem]:
-    """Thin adapter over ReportingService.get_top_clients."""
+    """Canonical client reporting with SQL-level search and sorting."""
     eff_limit = page_size if (page_size is not None and page_size >= 1) else limit
     eff_offset = ((page - 1) * eff_limit) if (page is not None and page >= 1) else offset
 
@@ -76,19 +78,17 @@ def list_clients(
         limit=eff_limit,
         offset=eff_offset,
         time_range=tr,
+        search=search.strip() if search and search.strip() else None,
+        sort_by=sort or "total_queries",
+        sort_order=order or "desc",
     )
-
-    items = result.items
-    if search and search.strip():
-        term = search.strip()
-        items = [c for c in items if term in c.client_ip]
 
     return PaginatedResponse[ClientSummaryItem](
         total=result.total,
         limit=result.limit,
         offset=result.offset,
         has_more=result.has_more,
-        items=items,
+        items=result.items,
     )
 
 

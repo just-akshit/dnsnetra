@@ -6,6 +6,8 @@ import { createDomainColumns } from "@/features/domains/domain-columns"
 import { createClientColumns } from "@/features/clients/client-columns"
 import { createQueryColumns } from "@/features/queries/query-columns"
 import { reportTabs } from "@/features/reports/reports-table-config"
+import { domainFilters } from "@/features/domains/domain-table-config"
+import { queryFilters } from "@/features/queries/query-table-config"
 import { DomainDetails } from "@/features/domains/domain-details"
 import { ClientDetails } from "@/features/clients/client-details"
 import { QueryDetails } from "@/features/queries/query-details"
@@ -25,10 +27,13 @@ function ReportsContent() {
     sorting,
     search,
     tab,
+    verdict,
+    columnFilters,
     onPaginationChange,
     onSortingChange,
     onSearchChange,
     onTabChange,
+    onColumnFiltersChange,
     resetFilters,
   } = useTableUrlState({
     defaultPageSize: 25,
@@ -41,6 +46,9 @@ function ReportsContent() {
   const [error, setError] = React.useState<string | null>(null)
   const [activeEntity, setActiveEntity] = React.useState<EntityIdentifier | null>(null)
 
+  const activeSort = sorting.length > 0 ? sorting[0].id : undefined
+  const activeOrder = sorting.length > 0 ? (sorting[0].desc ? "desc" : "asc") : undefined
+
   const handleRetry = React.useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -50,6 +58,8 @@ function ReportsContent() {
           page: pagination.pageIndex + 1,
           pageSize: pagination.pageSize,
           search: search || undefined,
+          sort: activeSort,
+          order: activeOrder,
           window: backendParams.window,
           start_time: backendParams.start_time,
           end_time: backendParams.end_time,
@@ -61,6 +71,9 @@ function ReportsContent() {
           page: pagination.pageIndex + 1,
           pageSize: pagination.pageSize,
           search: search || undefined,
+          verdict: verdict || undefined,
+          sort: activeSort,
+          order: activeOrder,
           window: backendParams.window,
           start_time: backendParams.start_time,
           end_time: backendParams.end_time,
@@ -81,6 +94,9 @@ function ReportsContent() {
           page: pagination.pageIndex + 1,
           pageSize: pagination.pageSize,
           search: search || undefined,
+          verdict: verdict || undefined,
+          sort: activeSort,
+          order: activeOrder,
           window: backendParams.window,
           start_time: backendParams.start_time,
           end_time: backendParams.end_time,
@@ -100,6 +116,9 @@ function ReportsContent() {
     pagination.pageIndex,
     pagination.pageSize,
     search,
+    verdict,
+    activeSort,
+    activeOrder,
     backendParams.window,
     backendParams.start_time,
     backendParams.end_time,
@@ -116,6 +135,8 @@ function ReportsContent() {
             page: pagination.pageIndex + 1,
             pageSize: pagination.pageSize,
             search: search || undefined,
+            sort: activeSort,
+            order: activeOrder,
             window: backendParams.window,
             start_time: backendParams.start_time,
             end_time: backendParams.end_time,
@@ -131,6 +152,9 @@ function ReportsContent() {
             page: pagination.pageIndex + 1,
             pageSize: pagination.pageSize,
             search: search || undefined,
+            verdict: verdict || undefined,
+            sort: activeSort,
+            order: activeOrder,
             window: backendParams.window,
             start_time: backendParams.start_time,
             end_time: backendParams.end_time,
@@ -159,6 +183,9 @@ function ReportsContent() {
             page: pagination.pageIndex + 1,
             pageSize: pagination.pageSize,
             search: search || undefined,
+            verdict: verdict || undefined,
+            sort: activeSort,
+            order: activeOrder,
             window: backendParams.window,
             start_time: backendParams.start_time,
             end_time: backendParams.end_time,
@@ -190,6 +217,9 @@ function ReportsContent() {
     pagination.pageIndex,
     pagination.pageSize,
     search,
+    verdict,
+    activeSort,
+    activeOrder,
     backendParams.window,
     backendParams.start_time,
     backendParams.end_time,
@@ -237,6 +267,9 @@ function ReportsContent() {
     tabs: reportTabs,
     activeTab: currentTab,
     onTabChange,
+    filters: currentTab === "domains" ? domainFilters : currentTab === "queries" ? queryFilters : undefined,
+    columnFilters,
+    onColumnFiltersChange,
     timeRangeControl: <TimeRangePicker />,
     onClearFilters: resetFilters,
     selectedEntity: activeEntity,

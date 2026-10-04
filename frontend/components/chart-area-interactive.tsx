@@ -52,10 +52,8 @@ export function ChartAreaInteractive({
   const chartData = React.useMemo(() => {
     if (!timeseries?.buckets?.length) return []
     return timeseries.buckets.map((b) => {
-      const d = b.timestamp
-      const label = d.length > 10 ? `${d.slice(5, 10)} ${d.slice(11, 16)}` : d.slice(5, 10)
       return {
-        date: label,
+        date: b.timestamp,
         total: b.total_queries,
         suspicious: b.malicious_queries + b.review_needed_queries,
       }
@@ -134,6 +132,15 @@ export function ChartAreaInteractive({
               minTickGap={32}
               tickFormatter={(value) => {
                 const date = new Date(value)
+                if (isNaN(date.getTime())) return value
+                const isSubDaily = timeseries?.bucket_size && !["1d", "1w"].includes(timeseries.bucket_size)
+                if (isSubDaily) {
+                  return date.toLocaleTimeString("en-US", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: false,
+                  })
+                }
                 return date.toLocaleDateString("en-US", {
                   month: "short",
                   day: "numeric",
@@ -145,7 +152,20 @@ export function ChartAreaInteractive({
               content={
                 <ChartTooltipContent
                   labelFormatter={(value) => {
-                    return new Date(value).toLocaleDateString("en-US", {
+                    const date = new Date(value)
+                    if (isNaN(date.getTime())) return value
+                    const isSubDaily = timeseries?.bucket_size && !["1d", "1w"].includes(timeseries.bucket_size)
+                    if (isSubDaily) {
+                      return date.toLocaleString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        hour12: false,
+                      })
+                    }
+                    return date.toLocaleDateString("en-US", {
+                      year: "numeric",
                       month: "short",
                       day: "numeric",
                     })

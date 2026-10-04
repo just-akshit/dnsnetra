@@ -201,6 +201,9 @@ class PersistedThreatIntel(BaseModel):
     reviewed_clean: Optional[ReviewedCleanContext] = None
 
 
+from investigation.enrichment.models import DomainRegistrationResult, DNSResolutionResult
+
+
 class DomainDossier(BaseModel):
     """360-degree forensic dossier for an individual domain entity."""
     model_config = ConfigDict(frozen=True)
@@ -210,3 +213,5 @@ class DomainDossier(BaseModel):
     top_querying_clients: List[DomainQueryingClientItem] = Field(default_factory=list)
     threat_intel: PersistedThreatIntel
     recent_queries: List[QueryEventSummary] = Field(default_factory=list)
+    registration: Optional[DomainRegistrationResult] = None
+    dns_records: Optional[DNSResolutionResult] = None

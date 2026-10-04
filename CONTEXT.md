@@ -255,5 +255,12 @@ The Centralized Temporal Engine (`time_engine`) is the single authoritative sour
   $$\text{benign} + \text{malicious} + \text{review\_needed} + \text{unknown} == \text{total}$$
 - Zero-filled buckets have all 4 verdict counts set to 0.
 
+---
 
+## 6. Analysis & Intelligence Search Concepts
 
+### Analysis
+The unified operational category across DNSNetra consolidating telemetry reporting, observed entity catalogs, and forensic evaluation queues: Reports, Domains, Clients, Queries, and Daily Review. Replaces the legacy "Investigate" navigation domain.
+
+### Global DNS Intelligence Search
+An on-demand, multi-entity cross-sectional search interface capable of querying and ranking Domains, Client IP endpoints, and DNS Query Events across authoritative telemetry with exact-match precedence, accessible universally across the application header.

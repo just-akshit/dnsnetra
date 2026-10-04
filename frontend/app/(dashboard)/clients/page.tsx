@@ -35,7 +35,10 @@ function ClientsContent() {
   const [error, setError] = React.useState<string | null>(null)
   const [activeEntity, setActiveEntity] = React.useState<EntityIdentifier | null>(null)
 
-  // Fetch clients from backend API whenever pagination, search, or time range changes
+  const activeSort = sorting.length > 0 ? sorting[0].id : undefined
+  const activeOrder = sorting.length > 0 ? (sorting[0].desc ? "desc" : "asc") : undefined
+
+  // Fetch clients from backend API whenever pagination, search, sorting, or time range changes
   React.useEffect(() => {
     let cancelled = false
 
@@ -46,6 +49,8 @@ function ClientsContent() {
           page: pagination.pageIndex + 1,
           pageSize: pagination.pageSize,
           search: search || undefined,
+          sort: activeSort,
+          order: activeOrder,
           window: backendParams.window,
           start_time: backendParams.start_time,
           end_time: backendParams.end_time,
@@ -75,6 +80,8 @@ function ClientsContent() {
     pagination.pageIndex,
     pagination.pageSize,
     search,
+    activeSort,
+    activeOrder,
     backendParams.window,
     backendParams.start_time,
     backendParams.end_time,
@@ -87,6 +94,8 @@ function ClientsContent() {
         page: pagination.pageIndex + 1,
         pageSize: pagination.pageSize,
         search: search || undefined,
+        sort: activeSort,
+        order: activeOrder,
         window: backendParams.window,
         start_time: backendParams.start_time,
         end_time: backendParams.end_time,
@@ -106,6 +115,8 @@ function ClientsContent() {
     pagination.pageIndex,
     pagination.pageSize,
     search,
+    activeSort,
+    activeOrder,
     backendParams.window,
     backendParams.start_time,
     backendParams.end_time,

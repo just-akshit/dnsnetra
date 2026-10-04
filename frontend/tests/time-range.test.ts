@@ -38,6 +38,12 @@ describe("Time Range Utilities", () => {
 
     const res30m = getPresetDates("30m", now)
     expect(res30m.start.toISOString()).toBe("2026-09-24T11:30:00.000Z")
+
+    const res6m = getPresetDates("6m", now)
+    expect(res6m.end.toISOString()).toBe("2026-09-24T12:00:00.000Z")
+
+    const res1y = getPresetDates("1y", now)
+    expect(res1y.end.toISOString()).toBe("2026-09-24T12:00:00.000Z")
   })
 
   it("formats display label for presets and custom ranges", () => {
@@ -46,6 +52,16 @@ describe("Time Range Utilities", () => {
 
     const preset7d: TimeRange = { type: "preset", preset: "7d" }
     expect(formatDisplayLabel(preset7d)).toBe("Last 7 days")
+
+    const preset6m: TimeRange = { type: "preset", preset: "6m" }
+    expect(formatDisplayLabel(preset6m)).toBe("Last 6 months")
+
+    const preset1y: TimeRange = { type: "preset", preset: "1y" }
+    expect(formatDisplayLabel(preset1y)).toBe("Last 1 year")
+
+    const presetAll: TimeRange = { type: "preset", preset: "all_time" }
+    expect(formatDisplayLabel(presetAll)).toBe("All Time")
+
 
     const customRange: TimeRange = {
       type: "custom",

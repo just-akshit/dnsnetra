@@ -30,8 +30,13 @@ class WindowPreset(str, Enum):
     H24 = "24h"
     D7 = "7d"
     D30 = "30d"
+    D90 = "90d"
+    M6 = "6m"
+    Y1 = "1y"
     TODAY = "today"
     YESTERDAY = "yesterday"
+    ALL_TIME = "all_time"
+
 
 
 class BucketResolutionSource(str, Enum):

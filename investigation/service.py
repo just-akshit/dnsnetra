@@ -286,10 +286,33 @@ class InvestigationService:
             for ev in raw_events
         ]
 
+        # 5. Live registration (RDAP) and DNS infrastructure enrichment (bounded deadline)
+        registration = None
+        dns_records = None
+        try:
+            from investigation.enrichment.rdap import RDAPEnricher
+            from investigation.enrichment.dns_resolver import DNSResolver
+            import time
+
+            deadline = time.monotonic() + 1.5
+            try:
+                registration = RDAPEnricher(timeout=1.5).enrich(clean_domain, deadline=deadline)
+            except Exception as exc:
+                logger.debug("RDAP lookup failed for %s: %s", clean_domain, exc)
+
+            try:
+                dns_records = DNSResolver(timeout=1.0).resolve(clean_domain, deadline=deadline)
+            except Exception as exc:
+                logger.debug("DNS resolution failed for %s: %s", clean_domain, exc)
+        except Exception as exc:
+            logger.debug("Enrichment subsystem unavailable for %s: %s", clean_domain, exc)
+
         return DomainDossier(
             domain=clean_domain,
             profile=profile,
             top_querying_clients=top_querying_clients,
             threat_intel=threat_intel,
             recent_queries=recent_queries,
+            registration=registration,
+            dns_records=dns_records,
         )

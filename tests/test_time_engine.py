@@ -187,6 +187,9 @@ class TestRollingPresets:
             ("24h", timedelta(hours=24), "1h", 3600),
             ("7d", timedelta(days=7), "6h", 21600),
             ("30d", timedelta(days=30), "1d", 86400),
+            ("90d", timedelta(days=90), "1d", 86400),
+            ("6m", timedelta(days=180), "1w", 604800),
+            ("1y", timedelta(days=365), "1w", 604800),
         ],
     )
     def test_canonical_rolling_presets(
@@ -200,11 +203,17 @@ class TestRollingPresets:
         assert tr.bucket_spec.bucket_label == expected_bucket_label
         assert tr.bucket_spec.bucket_seconds == expected_bucket_sec
 
-    @pytest.mark.parametrize("invalid_preset", ["60m", "6m", "45m", "90m", "1w", "unknown", ""])
+    @pytest.mark.parametrize("invalid_preset", ["60m", "45m", "90m", "1w", "unknown", ""])
     def test_reject_invalid_rolling_presets(self, invalid_preset):
         now = datetime(2026, 9, 16, 12, 0, 0, tzinfo=timezone.utc)
         with pytest.raises(TimeEngineValidationError):
             resolve_time_range(window=invalid_preset, now_override=now)
+
+    def test_all_time_window_preset(self):
+        tr = resolve_time_range(window="all_time")
+        assert tr.is_all_time is True
+        assert tr.preset == "all_time"
+
 
 
 # ===========================================================================

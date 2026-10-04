@@ -19,6 +19,8 @@ import {
   UsersIcon,
   ActivityIcon,
   AlertCircleIcon,
+  GlobeIcon,
+  ServerIcon,
 } from "lucide-react"
 
 export interface DomainDetailsProps {
@@ -173,6 +175,105 @@ export function DomainDetails({ domain }: DomainDetailsProps) {
           </div>
         )}
       </div>
+
+      {/* 4. Domain Registration Intelligence (RDAP) */}
+      {detail?.registration && detail.registration.status === "AVAILABLE" && (
+        <div className="rounded-md border border-border/80 bg-background p-4 flex flex-col gap-2.5">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <GlobeIcon className="size-3.5 text-primary" />
+              <span>Registration Context (RDAP)</span>
+            </h4>
+            <Badge variant="outline" className="font-mono text-[10px] px-1 py-0">
+              {detail.registration.registrar_id ? `IANA #${detail.registration.registrar_id}` : "RDAP"}
+            </Badge>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+            <div>
+              <span className="text-muted-foreground block text-[11px]">Registrar</span>
+              <span className="font-medium text-foreground truncate block">
+                {detail.registration.registrar || "Not Disclosed"}
+              </span>
+            </div>
+            <div>
+              <span className="text-muted-foreground block text-[11px]">Expires</span>
+              <span className="font-mono text-foreground">
+                {detail.registration.expires_at
+                  ? formatDnsnetraTimestamp(detail.registration.expires_at)
+                  : "—"}
+              </span>
+            </div>
+            <div>
+              <span className="text-muted-foreground block text-[11px]">Registered On</span>
+              <span className="font-mono text-foreground">
+                {detail.registration.created_at
+                  ? formatDnsnetraTimestamp(detail.registration.created_at)
+                  : "—"}
+              </span>
+            </div>
+            <div>
+              <span className="text-muted-foreground block text-[11px]">Last Updated</span>
+              <span className="font-mono text-foreground">
+                {detail.registration.updated_at
+                  ? formatDnsnetraTimestamp(detail.registration.updated_at)
+                  : "—"}
+              </span>
+            </div>
+          </div>
+
+          {detail.registration.nameservers && detail.registration.nameservers.length > 0 && (
+            <div className="pt-2 border-t border-border/60">
+              <span className="text-muted-foreground block text-[11px] mb-1">Authoritative Nameservers</span>
+              <div className="flex flex-wrap gap-1 font-mono text-[10px]">
+                {detail.registration.nameservers.slice(0, 4).map((ns) => (
+                  <Badge key={ns} variant="secondary" className="px-1.5 py-0 font-normal">
+                    {ns}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 5. Live DNS Infrastructure Records */}
+      {detail?.dns_records && detail.dns_records.status === "AVAILABLE" && (
+        <div className="rounded-md border border-border/80 bg-background p-4 flex flex-col gap-2.5">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+            <ServerIcon className="size-3.5 text-primary" />
+            <span>Resolved DNS Infrastructure</span>
+          </h4>
+
+          <div className="flex flex-col gap-2 text-xs font-mono">
+            {detail.dns_records.a && detail.dns_records.a.length > 0 && (
+              <div>
+                <span className="text-muted-foreground block text-[11px] font-sans">A Records (IPv4)</span>
+                <div className="flex flex-wrap gap-1 pt-0.5">
+                  {detail.dns_records.a.slice(0, 4).map((ip) => (
+                    <Badge key={ip} variant="outline" className="px-1.5 py-0 font-normal text-[11px]">
+                      {ip}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {detail.dns_records.mx && detail.dns_records.mx.length > 0 && (
+              <div>
+                <span className="text-muted-foreground block text-[11px] font-sans">Mail Exchangers (MX)</span>
+                <div className="flex flex-wrap gap-1 pt-0.5">
+                  {detail.dns_records.mx.slice(0, 3).map((mx) => (
+                    <Badge key={`${mx.priority}-${mx.exchange}`} variant="outline" className="px-1.5 py-0 font-normal text-[11px]">
+                      {mx.exchange} ({mx.priority})
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 4. Top Querying Clients */}
       {detail?.top_querying_clients && detail.top_querying_clients.length > 0 && (

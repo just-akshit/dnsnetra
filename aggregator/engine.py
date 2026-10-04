@@ -65,6 +65,7 @@ class DNSNetraAggregator:
             dbname=DB_NAME,
             user=DB_USER,
             password=DB_PASSWORD,
+            options="-c timezone=UTC",
         )
 
     def _acquire_lock(self, cur) -> bool:

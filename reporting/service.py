@@ -265,9 +265,12 @@ class ReportingService:
         start_time: Optional[Union[datetime, str]] = None,
         end_time: Optional[Union[datetime, str]] = None,
         window: Optional[str] = None,
+        search: Optional[str] = None,
+        sort_by: str = "total_queries",
+        sort_order: str = "desc",
     ) -> PaginatedResult[ClientSummaryItem]:
         """
-        Retrieves ranked top clients ordered deterministically by total_queries DESC, client_ip ASC.
+        Retrieves ranked top clients ordered by specified criteria with SQL search and sorting.
         """
         if limit < 1 or limit > 1000:
             raise ReportingValidationError("limit must be between 1 and 1000.")
@@ -293,12 +296,16 @@ class ReportingService:
                 if tr.is_empty:
                     return PaginatedResult(total=0, limit=limit, offset=offset, has_more=False, items=[])
                 total, rows = self.repository.get_windowed_top_clients(
-                    tr.start, tr.observable_end, limit, offset
+                    tr.start, tr.observable_end, limit, offset, search=search, sort_by=sort_by, sort_order=sort_order
                 )
             else:
-                total, rows = self.repository.get_all_time_top_clients(limit, offset)
+                total, rows = self.repository.get_all_time_top_clients(
+                    limit, offset, search=search, sort_by=sort_by, sort_order=sort_order
+                )
         else:
-            total, rows = self.repository.get_all_time_top_clients(limit, offset)
+            total, rows = self.repository.get_all_time_top_clients(
+                limit, offset, search=search, sort_by=sort_by, sort_order=sort_order
+            )
 
         items = [ClientSummaryItem(**r) for r in rows]
         has_more = (offset + len(items)) < total
@@ -324,6 +331,9 @@ class ReportingService:
         start_time: Optional[Union[datetime, str]] = None,
         end_time: Optional[Union[datetime, str]] = None,
         window: Optional[str] = None,
+        search: Optional[str] = None,
+        sort_by: str = "total_queries",
+        sort_order: str = "desc",
     ) -> PaginatedResult[DomainSummaryItem]:
         """
         Retrieves ranked top domains.
@@ -359,14 +369,16 @@ class ReportingService:
         if verdict_filter:
             canon = CanonicalVerdict.from_str(verdict_filter).value
             total, rows = self.repository.get_filtered_top_domains(
-                canon, q_start, q_end, limit, offset
+                canon, q_start, q_end, limit, offset, search=search, sort_by=sort_by, sort_order=sort_order
             )
         elif q_start is not None and q_end is not None:
             total, rows = self.repository.get_windowed_top_domains(
-                q_start, q_end, limit, offset
+                q_start, q_end, limit, offset, search=search, sort_by=sort_by, sort_order=sort_order
             )
         else:
-            total, rows = self.repository.get_all_time_top_domains(limit, offset)
+            total, rows = self.repository.get_all_time_top_domains(
+                limit, offset, search=search, sort_by=sort_by, sort_order=sort_order
+            )
 
         items = [DomainSummaryItem(**r) for r in rows]
         has_more = (offset + len(items)) < total
@@ -393,6 +405,9 @@ class ReportingService:
         start_time: Optional[Union[datetime, str]] = None,
         end_time: Optional[Union[datetime, str]] = None,
         window: Optional[str] = None,
+        search: Optional[str] = None,
+        sort_by: str = "timestamp",
+        sort_order: str = "desc",
         limit: int = 50,
         offset: int = 0,
     ) -> PaginatedResult[QueryEventItem]:
@@ -451,6 +466,9 @@ class ReportingService:
             query_type=clean_qt,
             start_time=q_start,
             end_time=q_end,
+            search=search,
+            sort_by=sort_by,
+            sort_order=sort_order,
             limit=limit,
             offset=offset,
         )

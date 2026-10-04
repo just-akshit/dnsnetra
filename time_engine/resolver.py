@@ -98,6 +98,21 @@ PRESET_REGISTRY: Dict[str, PresetSpec] = {
         duration_seconds=2592000,
         default_bucket=BucketSpec(bucket_seconds=86400, bucket_label="1d"),
     ),
+    "90d": PresetSpec(
+        preset_name="90d",
+        duration_seconds=7776000,
+        default_bucket=BucketSpec(bucket_seconds=86400, bucket_label="1d"),
+    ),
+    "6m": PresetSpec(
+        preset_name="6m",
+        duration_seconds=15552000,
+        default_bucket=BucketSpec(bucket_seconds=604800, bucket_label="1w"),
+    ),
+    "1y": PresetSpec(
+        preset_name="1y",
+        duration_seconds=31536000,
+        default_bucket=BucketSpec(bucket_seconds=604800, bucket_label="1w"),
+    ),
     "today": PresetSpec(
         preset_name="today",
         duration_seconds=None,
@@ -109,6 +124,7 @@ PRESET_REGISTRY: Dict[str, PresetSpec] = {
         default_bucket=BucketSpec(bucket_seconds=3600, bucket_label="1h"),
     ),
 }
+
 
 # Derived mapping of rolling presets (those with fixed durations)
 ROLLING_PRESETS: Dict[str, PresetSpec] = {
@@ -374,15 +390,26 @@ def resolve_time_range(
         else:
             raise TimeEngineValidationError(f"Unknown default policy: {default_policy!r}")
 
-    # 4. Case B: Preset Window (Rolling or Calendar)
+    # 4. Case B: Preset Window (Rolling or Calendar or All-Time)
     if has_window:
         norm_preset = window.strip().lower()
+
+        if norm_preset in ("all_time", "all-time", WindowPreset.ALL_TIME.value):
+            if bucket is not None and bucket.strip():
+                raise TimeEngineValidationError("Bucket width cannot be specified for all-time preset.")
+            return ResolvedTimeRange(
+                is_all_time=True,
+                resolved_now=resolved_now,
+                preset="all_time",
+                default_policy=TemporalDefaultPolicy.ALL_TIME,
+                bucket_source=None,
+            )
 
         if norm_preset not in PRESET_REGISTRY:
             supported_rolling = ", ".join(ROLLING_PRESETS.keys())
             raise TimeEngineValidationError(
                 f"Invalid window preset '{window}'. Supported rolling presets: {supported_rolling}; "
-                "calendar presets: today, yesterday."
+                "calendar presets: today, yesterday, all_time."
             )
 
         preset_spec = PRESET_REGISTRY[norm_preset]

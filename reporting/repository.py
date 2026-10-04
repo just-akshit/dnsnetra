@@ -69,7 +69,27 @@ class ReportingRepository:
                     "unique_domains": int(d_row.get("unique_domains") or 0),
                 }
 
+    def get_data_time_bounds(self) -> Tuple[Optional[datetime], Optional[datetime]]:
+        """
+        Retrieves the earliest and latest timestamp of telemetry data.
+        Tries telemetry_hourly_rollup first, falls back to domain_query_history.
+        """
+        with self._get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT MIN(bucket_time), MAX(bucket_time) FROM telemetry_hourly_rollup;")
+                row = cur.fetchone()
+                if row and row[0] is not None and row[1] is not None:
+                    return (row[0], row[1])
+
+                cur.execute("SELECT MIN(timestamp), MAX(timestamp) FROM domain_query_history;")
+                row = cur.fetchone()
+                if row and row[0] is not None and row[1] is not None:
+                    return (row[0], row[1])
+
+                return (None, None)
+
     def get_aligned_window_summary(self, start_time: datetime, end_time: datetime) -> Dict[str, Any]:
+
         """
         Retrieves summary for an exact hourly-aligned interval [start_time, end_time).
         Uses telemetry_hourly_rollup for additive sums and domain_query_history for distinct cardinality.
@@ -193,16 +213,41 @@ class ReportingRepository:
     # 3. Top Clients Queries
     # -----------------------------------------------------------------------
 
-    def get_all_time_top_clients(self, limit: int, offset: int) -> Tuple[int, List[Dict[str, Any]]]:
+    def get_all_time_top_clients(
+        self,
+        limit: int,
+        offset: int,
+        search: Optional[str] = None,
+        sort_by: str = "total_queries",
+        sort_order: str = "desc",
+    ) -> Tuple[int, List[Dict[str, Any]]]:
         """
-        Retrieves all-time ranked clients from client_profiles.
+        Retrieves all-time ranked clients from client_profiles with SQL search and sorting.
         """
+        sort_map = {
+            "total_queries": "total_queries",
+            "unique_domains": "unique_domains",
+            "client_ip": "client_ip",
+            "first_seen": "first_seen",
+            "last_seen": "last_seen",
+        }
+        sort_col = sort_map.get(str(sort_by).lower(), "total_queries")
+        direction = "ASC" if str(sort_order).lower() == "asc" else "DESC"
+
+        where_clause = ""
+        params: List[Any] = []
+        if search and search.strip():
+            where_clause = "WHERE host(client_ip) ILIKE %s"
+            params.append(f"%{search.strip()}%")
+
         with self._get_conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute("SELECT COUNT(*) FROM client_profiles;")
+                cur.execute(f"SELECT COUNT(*) FROM client_profiles {where_clause};", tuple(params))
                 total = cur.fetchone()["count"]
 
-                cur.execute("""
+                query_params = list(params)
+                query_params.extend([limit, offset])
+                cur.execute(f"""
                     SELECT 
                         host(client_ip) AS client_ip,
                         total_queries,
@@ -216,27 +261,53 @@ class ReportingRepository:
                         to_char(first_seen AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS first_seen,
                         to_char(last_seen AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS last_seen
                     FROM client_profiles
-                    ORDER BY total_queries DESC, client_ip ASC
+                    {where_clause}
+                    ORDER BY {sort_col} {direction}, client_ip ASC
                     LIMIT %s OFFSET %s;
-                """, (limit, offset))
+                """, tuple(query_params))
                 return total, [dict(r) for r in cur.fetchall()]
 
     def get_windowed_top_clients(
-        self, start_time: datetime, end_time: datetime, limit: int, offset: int
+        self,
+        start_time: datetime,
+        end_time: datetime,
+        limit: int,
+        offset: int,
+        search: Optional[str] = None,
+        sort_by: str = "total_queries",
+        sort_order: str = "desc",
     ) -> Tuple[int, List[Dict[str, Any]]]:
         """
-        Retrieves windowed ranked clients from domain_query_history.
+        Retrieves windowed ranked clients from domain_query_history with SQL search and sorting.
         """
+        sort_map = {
+            "total_queries": "total_queries",
+            "unique_domains": "unique_domains",
+            "client_ip": "client_ip",
+            "first_seen": "first_seen",
+            "last_seen": "last_seen",
+        }
+        sort_col = sort_map.get(str(sort_by).lower(), "total_queries")
+        direction = "ASC" if str(sort_order).lower() == "asc" else "DESC"
+
+        params: List[Any] = [start_time, end_time]
+        search_clause = ""
+        if search and search.strip():
+            search_clause = "AND client_ip ILIKE %s"
+            params.append(f"%{search.strip()}%")
+
         with self._get_conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute("""
+                cur.execute(f"""
                     SELECT COUNT(DISTINCT client_ip)
                     FROM domain_query_history
-                    WHERE timestamp >= %s AND timestamp < %s;
-                """, (start_time, end_time))
+                    WHERE timestamp >= %s AND timestamp < %s {search_clause};
+                """, tuple(params))
                 total = cur.fetchone()["count"]
 
-                cur.execute("""
+                query_params = list(params)
+                query_params.extend([limit, offset])
+                cur.execute(f"""
                     SELECT 
                         client_ip,
                         COUNT(*) AS total_queries,
@@ -250,27 +321,55 @@ class ReportingRepository:
                         to_char(MIN(timestamp) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS first_seen,
                         to_char(MAX(timestamp) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS last_seen
                     FROM domain_query_history
-                    WHERE timestamp >= %s AND timestamp < %s
+                    WHERE timestamp >= %s AND timestamp < %s {search_clause}
                     GROUP BY client_ip
-                    ORDER BY total_queries DESC, client_ip ASC
+                    ORDER BY {sort_col} {direction}, client_ip ASC
                     LIMIT %s OFFSET %s;
-                """, (start_time, end_time, limit, offset))
+                """, tuple(query_params))
                 return total, [dict(r) for r in cur.fetchall()]
 
     # -----------------------------------------------------------------------
     # 4. Top Domains Queries
     # -----------------------------------------------------------------------
 
-    def get_all_time_top_domains(self, limit: int, offset: int) -> Tuple[int, List[Dict[str, Any]]]:
+    def get_all_time_top_domains(
+        self,
+        limit: int,
+        offset: int,
+        search: Optional[str] = None,
+        sort_by: str = "total_queries",
+        sort_order: str = "desc",
+    ) -> Tuple[int, List[Dict[str, Any]]]:
         """
-        Retrieves all-time ranked domains from domain_profiles.
+        Retrieves all-time ranked domains from domain_profiles with SQL search and sorting.
         """
+        sort_map = {
+            "total_queries": "total_queries",
+            "unique_clients": "unique_clients",
+            "domain": "domain",
+            "benign_queries": "clean_queries",
+            "malicious_queries": "malicious_queries",
+            "latest_verdict": "last_label",
+            "first_seen": "first_seen",
+            "last_seen": "last_seen",
+        }
+        sort_col = sort_map.get(str(sort_by).lower(), "total_queries")
+        direction = "ASC" if str(sort_order).lower() == "asc" else "DESC"
+
+        where_clause = ""
+        params: List[Any] = []
+        if search and search.strip():
+            where_clause = "WHERE domain ILIKE %s"
+            params.append(f"%{search.strip()}%")
+
         with self._get_conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute("SELECT COUNT(*) FROM domain_profiles;")
+                cur.execute(f"SELECT COUNT(*) FROM domain_profiles {where_clause};", tuple(params))
                 total = cur.fetchone()["count"]
 
-                cur.execute("""
+                query_params = list(params)
+                query_params.extend([limit, offset])
+                cur.execute(f"""
                     SELECT 
                         domain,
                         total_queries,
@@ -283,27 +382,56 @@ class ReportingRepository:
                         to_char(first_seen AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS first_seen,
                         to_char(last_seen AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS last_seen
                     FROM domain_profiles
-                    ORDER BY total_queries DESC, domain ASC
+                    {where_clause}
+                    ORDER BY {sort_col} {direction}, domain ASC
                     LIMIT %s OFFSET %s;
-                """, (limit, offset))
+                """, tuple(query_params))
                 return total, [dict(r) for r in cur.fetchall()]
 
     def get_windowed_top_domains(
-        self, start_time: datetime, end_time: datetime, limit: int, offset: int
+        self,
+        start_time: datetime,
+        end_time: datetime,
+        limit: int,
+        offset: int,
+        search: Optional[str] = None,
+        sort_by: str = "total_queries",
+        sort_order: str = "desc",
     ) -> Tuple[int, List[Dict[str, Any]]]:
         """
-        Retrieves windowed ranked domains from domain_query_history without verdict filter.
+        Retrieves windowed ranked domains from domain_query_history without verdict filter,
+        supporting SQL search and sorting.
         """
+        sort_map = {
+            "total_queries": "total_queries",
+            "unique_clients": "unique_clients",
+            "domain": "domain",
+            "benign_queries": "benign_queries",
+            "malicious_queries": "malicious_queries",
+            "first_seen": "first_seen",
+            "last_seen": "last_seen",
+        }
+        sort_col = sort_map.get(str(sort_by).lower(), "total_queries")
+        direction = "ASC" if str(sort_order).lower() == "asc" else "DESC"
+
+        params: List[Any] = [start_time, end_time]
+        search_clause = ""
+        if search and search.strip():
+            search_clause = "AND domain ILIKE %s"
+            params.append(f"%{search.strip()}%")
+
         with self._get_conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute("""
+                cur.execute(f"""
                     SELECT COUNT(DISTINCT domain)
                     FROM domain_query_history
-                    WHERE timestamp >= %s AND timestamp < %s;
-                """, (start_time, end_time))
+                    WHERE timestamp >= %s AND timestamp < %s {search_clause};
+                """, tuple(params))
                 total = cur.fetchone()["count"]
 
-                cur.execute("""
+                query_params = list(params)
+                query_params.extend([limit, offset])
+                cur.execute(f"""
                     SELECT 
                         domain,
                         COUNT(*) AS total_queries,
@@ -316,11 +444,11 @@ class ReportingRepository:
                         to_char(MIN(timestamp) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS first_seen,
                         to_char(MAX(timestamp) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS last_seen
                     FROM domain_query_history
-                    WHERE timestamp >= %s AND timestamp < %s
+                    WHERE timestamp >= %s AND timestamp < %s {search_clause}
                     GROUP BY domain
-                    ORDER BY total_queries DESC, domain ASC
+                    ORDER BY {sort_col} {direction}, domain ASC
                     LIMIT %s OFFSET %s;
-                """, (start_time, end_time, limit, offset))
+                """, tuple(query_params))
                 return total, [dict(r) for r in cur.fetchall()]
 
     def get_filtered_top_domains(
@@ -330,24 +458,43 @@ class ReportingRepository:
         end_time: Optional[datetime],
         limit: int,
         offset: int,
+        search: Optional[str] = None,
+        sort_by: str = "total_queries",
+        sort_order: str = "desc",
     ) -> Tuple[int, List[Dict[str, Any]]]:
         """
-        Retrieves ranked domains strictly scoped to an event-population matching the verdict.
-        Only events matching the verdict participate in metrics and ranking.
+        Retrieves ranked domains strictly scoped to an event-population matching the verdict,
+        supporting SQL search and sorting.
         """
+        sort_map = {
+            "total_queries": "total_queries",
+            "unique_clients": "unique_clients",
+            "domain": "domain",
+            "benign_queries": "benign_queries",
+            "malicious_queries": "malicious_queries",
+            "first_seen": "first_seen",
+            "last_seen": "last_seen",
+        }
+        sort_col = sort_map.get(str(sort_by).lower(), "total_queries")
+        direction = "ASC" if str(sort_order).lower() == "asc" else "DESC"
+
         params: List[Any] = [verdict]
         time_clause = ""
         if start_time and end_time:
             time_clause = "AND timestamp >= %s AND timestamp < %s"
             params.extend([start_time, end_time])
 
+        search_clause = ""
+        if search and search.strip():
+            search_clause = "AND domain ILIKE %s"
+            params.append(f"%{search.strip()}%")
+
         with self._get_conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                # 1. Total distinct domains in this filtered event population
                 count_sql = f"""
                     SELECT COUNT(DISTINCT domain)
                     FROM domain_query_history
-                    WHERE final_label = %s {time_clause};
+                    WHERE final_label = %s {time_clause} {search_clause};
                 """
                 cur.execute(count_sql, tuple(params))
                 total = cur.fetchone()["count"]
@@ -365,14 +512,16 @@ class ReportingRepository:
                         to_char(MIN(timestamp) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS first_seen,
                         to_char(MAX(timestamp) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS last_seen
                     FROM domain_query_history
-                    WHERE final_label = %s {time_clause}
+                    WHERE final_label = %s {time_clause} {search_clause}
                     GROUP BY domain
-                    ORDER BY total_queries DESC, domain ASC
+                    ORDER BY {sort_col} {direction}, domain ASC
                     LIMIT %s OFFSET %s;
                 """
                 query_params: List[Any] = [verdict, verdict]
                 if start_time and end_time:
                     query_params.extend([start_time, end_time])
+                if search and search.strip():
+                    query_params.append(f"%{search.strip()}%")
                 query_params.extend([limit, offset])
                 cur.execute(query_sql, tuple(query_params))
                 return total, [dict(r) for r in cur.fetchall()]
@@ -389,11 +538,14 @@ class ReportingRepository:
         query_type: Optional[str] = None,
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None,
+        search: Optional[str] = None,
+        sort_by: str = "timestamp",
+        sort_order: str = "desc",
         limit: int = 50,
         offset: int = 0,
     ) -> Tuple[int, List[Dict[str, Any]]]:
         """
-        Multi-criteria paginated query on authoritative domain_query_history.
+        Multi-criteria paginated query on authoritative domain_query_history with SQL search and sorting.
         """
         clauses = []
         params: List[Any] = []
@@ -403,8 +555,8 @@ class ReportingRepository:
             params.append(client_ip.strip())
 
         if domain:
-            clauses.append("domain = %s")
-            params.append(domain.strip().lower())
+            clauses.append("domain ILIKE %s")
+            params.append(f"%{domain.strip().lower()}%")
 
         if verdict:
             clauses.append("final_label = %s")
@@ -413,6 +565,11 @@ class ReportingRepository:
         if query_type:
             clauses.append("query_type = %s")
             params.append(query_type.strip().upper())
+
+        if search and search.strip():
+            term = f"%{search.strip()}%"
+            clauses.append("(domain ILIKE %s OR client_ip ILIKE %s)")
+            params.extend([term, term])
 
         if start_time and end_time:
             clauses.append("timestamp >= %s AND timestamp < %s")
@@ -425,6 +582,17 @@ class ReportingRepository:
             params.append(end_time)
 
         where_sql = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+
+        sort_map = {
+            "timestamp": "timestamp",
+            "client_ip": "client_ip",
+            "domain": "domain",
+            "query_type": "query_type",
+            "final_label": "final_label",
+            "id": "id",
+        }
+        sort_col = sort_map.get(str(sort_by).lower(), "timestamp")
+        direction = "ASC" if str(sort_order).lower() == "asc" else "DESC"
 
         with self._get_conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -450,7 +618,7 @@ class ReportingRepository:
                         tld
                     FROM domain_query_history
                     {where_sql}
-                    ORDER BY timestamp DESC, id DESC
+                    ORDER BY {sort_col} {direction}, id {direction}
                     LIMIT %s OFFSET %s;
                 """, tuple(items_params))
 

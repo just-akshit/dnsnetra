@@ -48,19 +48,45 @@ function DropdownMenuContent({
   )
 }
 
-function DropdownMenuGroup({ ...props }: MenuPrimitive.Group.Props) {
-  return <MenuPrimitive.Group data-slot="dropdown-menu-group" {...props} />
+const DropdownMenuGroupContext = React.createContext(false)
+
+function DropdownMenuGroup({ children, ...props }: MenuPrimitive.Group.Props) {
+  return (
+    <DropdownMenuGroupContext.Provider value={true}>
+      <MenuPrimitive.Group data-slot="dropdown-menu-group" {...props}>
+        {children}
+      </MenuPrimitive.Group>
+    </DropdownMenuGroupContext.Provider>
+  )
+}
+
+interface DropdownMenuLabelProps extends React.ComponentProps<"div"> {
+  inset?: boolean
 }
 
 function DropdownMenuLabel({
   className,
   inset,
   ...props
-}: MenuPrimitive.GroupLabel.Props & {
-  inset?: boolean
-}) {
+}: DropdownMenuLabelProps) {
+  const isInsideGroup = React.useContext(DropdownMenuGroupContext)
+
+  if (isInsideGroup) {
+    return (
+      <MenuPrimitive.GroupLabel
+        data-slot="dropdown-menu-label"
+        data-inset={inset}
+        className={cn(
+          "px-1.5 py-1 text-xs font-medium text-muted-foreground data-inset:pl-7",
+          className
+        )}
+        {...(props as MenuPrimitive.GroupLabel.Props)}
+      />
+    )
+  }
+
   return (
-    <MenuPrimitive.GroupLabel
+    <div
       data-slot="dropdown-menu-label"
       data-inset={inset}
       className={cn(
@@ -178,12 +204,19 @@ function DropdownMenuCheckboxItem({
   )
 }
 
-function DropdownMenuRadioGroup({ ...props }: MenuPrimitive.RadioGroup.Props) {
+function DropdownMenuRadioGroup({
+  children,
+  ...props
+}: MenuPrimitive.RadioGroup.Props) {
   return (
-    <MenuPrimitive.RadioGroup
-      data-slot="dropdown-menu-radio-group"
-      {...props}
-    />
+    <DropdownMenuGroupContext.Provider value={true}>
+      <MenuPrimitive.RadioGroup
+        data-slot="dropdown-menu-radio-group"
+        {...props}
+      >
+        {children}
+      </MenuPrimitive.RadioGroup>
+    </DropdownMenuGroupContext.Provider>
   )
 }
 

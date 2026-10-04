@@ -39,7 +39,30 @@ router = APIRouter(prefix="/api/v1/dashboard", tags=["Dashboard"])
 def _build_timeseries_response(tr: ResolvedTimeRange, service: ReportingService) -> Optional[TimeseriesResponse]:
     """Compose complete timeseries response with Phase 2C resolved bucket metadata."""
     if tr.is_all_time:
-        return None
+        min_time, _ = service.repository.get_data_time_bounds()
+        if not min_time:
+            return TimeseriesResponse(
+                start_time="",
+                end_time="",
+                bucket_size="1w",
+                bucket_source="AUTO",
+                buckets=[],
+            )
+        try:
+            bounded_tr = resolve_time_range(
+                start_time=min_time,
+                end_time=tr.resolved_now,
+                bucket="1w",
+            )
+            return _build_timeseries_response(bounded_tr, service)
+        except Exception:
+            return TimeseriesResponse(
+                start_time=format_iso8601_utc(min_time),
+                end_time=format_iso8601_utc(tr.resolved_now),
+                bucket_size="1w",
+                bucket_source="AUTO",
+                buckets=[],
+            )
 
     s_iso = format_iso8601_utc(tr.start) if tr.start else ""
     e_iso = format_iso8601_utc(tr.end) if tr.end else ""
@@ -97,36 +120,28 @@ def _build_timeseries_response(tr: ResolvedTimeRange, service: ReportingService)
     description="Returns coherent KPI metrics, continuous timeseries, top clients, and top domains for a single resolved temporal range.",
 )
 def get_dashboard(
-    window: Optional[str] = Query(None, description="Preset window (e.g. 15m, 1h, 6h, 24h, 7d, 30d, today, yesterday)"),
+    window: Optional[str] = Query(None, description="Preset window (e.g. 15m, 1h, 6h, 24h, 7d, 30d, 90d, 6m, 1y, all_time, today, yesterday)"),
     start_time: Optional[str] = Query(None, description="ISO-8601 start timestamp"),
     end_time: Optional[str] = Query(None, description="ISO-8601 end timestamp"),
-    bucket: Optional[str] = Query(None, description="Explicit bucket size (e.g. 5m, 1h, 1d)"),
+    bucket: Optional[str] = Query(None, description="Explicit bucket size (e.g. 5m, 1h, 1d, 1w)"),
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> DashboardResponse:
     """Controlled dashboard composition endpoint."""
     reporting_service = ReportingService()
 
     # 1. Resolve temporal range ONCE for the entire dashboard bundle
-    if window == "all_time":
+    try:
         tr = resolve_time_range(
-            window=None,
-            start_time=None,
-            end_time=None,
-            bucket=None,
-            default_policy=TemporalDefaultPolicy.ALL_TIME,
+            window=window,
+            start_time=start_time,
+            end_time=end_time,
+            bucket=bucket,
+            default_policy=TemporalDefaultPolicy.ROLLING_24H,
         )
-    else:
-        try:
-            tr = resolve_time_range(
-                window=window,
-                start_time=start_time,
-                end_time=end_time,
-                bucket=bucket,
-                default_policy=TemporalDefaultPolicy.ROLLING_24H,
-            )
-        except Exception as exc:
-            from fastapi import HTTPException, status
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception as exc:
+        from fastapi import HTTPException, status
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
 
 
     # 2. Compute summary & KPIs for the resolved range
@@ -170,8 +185,8 @@ def get_dashboard(
         malicious_query_percentage=summary.malicious_query_percentage,
     )
 
-    # 3. Compute continuous timeseries
-    timeseries = _build_timeseries_response(tr, reporting_service)
+    # 3. Compute continuous timeseries (None for all-time where timeseries is undefined)
+    timeseries = None if tr.is_all_time else _build_timeseries_response(tr, reporting_service)
 
     # 4. Top entities for this window
     top_clients = reporting_service.get_top_clients(time_range=tr, limit=10).items

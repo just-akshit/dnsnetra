@@ -128,6 +128,27 @@ export interface DomainDetail {
     final_label: string
     ti_source?: string | null
   }>
+  registration?: {
+    status: string
+    source?: string
+    registrar?: string | null
+    registrar_id?: string | null
+    created_at?: string | null
+    updated_at?: string | null
+    expires_at?: string | null
+    domain_status?: string[]
+    nameservers?: string[]
+    error?: string | null
+  } | null
+  dns_records?: {
+    status: string
+    a?: string[]
+    aaaa?: string[]
+    cname?: string[]
+    ns?: string[]
+    mx?: Array<{ priority: number; exchange: string }>
+    error?: string | null
+  } | null
 }
 
 export interface ClientDetail {
@@ -293,42 +314,18 @@ export interface DomainAnalyticsResponse {
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
-let inMemoryToken: string | null = null
-
-export async function getAuthToken(): Promise<string | null> {
-  if (typeof window !== "undefined") {
-    const stored = window.localStorage.getItem("dnsnetra_access_token")
-    if (stored) return stored
-  }
-  if (inMemoryToken) return inMemoryToken
-
-  // Authenticate against FastAPI backend with default administrator credentials
-  try {
-    const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: "admin@security.local", password: "admin" }),
-    })
-    if (res.ok) {
-      const data = (await res.json()) as { access_token?: string }
-      if (data.access_token) {
-        inMemoryToken = data.access_token
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem("dnsnetra_access_token", data.access_token)
-        }
-        return inMemoryToken
-      }
-    }
-  } catch {
-    // Backend offline or unreachable
-  }
-  return null
+/** Session is the backend's HttpOnly cookie; an expired one sends the user to /login. */
+function redirectToLogin(): void {
+  if (typeof window === "undefined") return
+  const p = window.location.pathname
+  if (p === "/login" || p === "/signup") return
+  window.location.assign("/login")
 }
 
 async function apiFetch<T>(
   path: string,
   params: Record<string, string | number | boolean | null | undefined> = {},
-  options: { method?: string; body?: unknown } = {}
+  options: { method?: string; body?: unknown; _isRetry?: boolean } = {}
 ): Promise<T> {
   const url = new URL(path, API_BASE)
   for (const [k, v] of Object.entries(params)) {
@@ -341,11 +338,6 @@ async function apiFetch<T>(
     Accept: "application/json",
   }
 
-  const token = await getAuthToken()
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`
-  }
-
   if (options.body) {
     headers["Content-Type"] = "application/json"
   }
@@ -354,9 +346,14 @@ async function apiFetch<T>(
     method: options.method || "GET",
     headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
+    credentials: "include",
     // Prevent stale caching on dynamic table queries
     cache: "no-store",
   })
+
+  if (res.status === 401) {
+    redirectToLogin()
+  }
 
   if (!res.ok) {
     const errorText = await res.text().catch(() => "Unknown error")
@@ -366,6 +363,12 @@ async function apiFetch<T>(
   return res.json()
 }
 
+export interface GlobalSearchResult {
+  domains: DomainItem[]
+  clients: ClientItem[]
+  queries: QueryItem[]
+}
+
 export const dnsnetraApi = {
   /** List domains */
   async getDomains(params: {
@@ -373,6 +376,8 @@ export const dnsnetraApi = {
     pageSize?: number
     verdict?: string
     search?: string
+    sort?: string
+    order?: "asc" | "desc"
     window?: string
     start_time?: string
     end_time?: string
@@ -383,6 +388,8 @@ export const dnsnetraApi = {
       page_size: params.pageSize ?? 25,
       verdict: params.verdict,
       search: params.search,
+      sort: params.sort,
+      order: params.order,
       window: hasCustom ? undefined : params.window,
       start_time: params.start_time,
       end_time: params.end_time,
@@ -404,6 +411,8 @@ export const dnsnetraApi = {
     page?: number
     pageSize?: number
     search?: string
+    sort?: string
+    order?: "asc" | "desc"
     window?: string
     start_time?: string
     end_time?: string
@@ -413,6 +422,8 @@ export const dnsnetraApi = {
       page: params.page ?? 1,
       page_size: params.pageSize ?? 25,
       search: params.search,
+      sort: params.sort,
+      order: params.order,
       window: hasCustom ? undefined : params.window,
       start_time: params.start_time,
       end_time: params.end_time,
@@ -438,6 +449,8 @@ export const dnsnetraApi = {
     verdict?: string
     query_type?: string
     search?: string
+    sort?: string
+    order?: "asc" | "desc"
     window?: string
     start_time?: string
     end_time?: string
@@ -451,6 +464,8 @@ export const dnsnetraApi = {
       verdict: params.verdict,
       query_type: params.query_type,
       search: params.search,
+      sort: params.sort,
+      order: params.order,
       window: hasCustom ? undefined : params.window,
       start_time: params.start_time,
       end_time: params.end_time,
@@ -565,7 +580,6 @@ export const dnsnetraApi = {
       limit?: number
     } = {}
   ): Promise<void> {
-    const token = await getAuthToken()
     const hasCustom = Boolean(params.start_time && params.end_time)
     const url = new URL("/api/v1/reports/export/csv", API_BASE)
     const queryParams: Record<string, string | number | undefined> = {
@@ -584,11 +598,8 @@ export const dnsnetraApi = {
         url.searchParams.set(k, String(v))
       }
     }
-    const headers: Record<string, string> = {}
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`
-    }
-    const res = await fetch(url.toString(), { headers })
+    const res = await fetch(url.toString(), { credentials: "include" })
+    if (res.status === 401) redirectToLogin()
     if (!res.ok) {
       throw new Error(`Export download failed (${res.status})`)
     }
@@ -640,4 +651,93 @@ export const dnsnetraApi = {
       end: params.end,
     })
   },
+
+  /**
+   * Search across domains, clients, and queries with exact match priority
+   */
+  async searchIntelligence(
+    query: string,
+    limitPerCategory = 5
+  ): Promise<GlobalSearchResult> {
+    const trimmed = query.trim()
+    if (!trimmed) {
+      return { domains: [], clients: [], queries: [] }
+    }
+
+    const [domainsRes, clientsRes, queriesRes] = await Promise.allSettled([
+      this.getDomains({ search: trimmed, pageSize: limitPerCategory * 2 }),
+      this.getClients({ search: trimmed, pageSize: limitPerCategory * 2 }),
+      this.getQueries({ search: trimmed, pageSize: limitPerCategory * 2 }),
+    ])
+
+    const allFailed =
+      domainsRes.status === "rejected" &&
+      clientsRes.status === "rejected" &&
+      queriesRes.status === "rejected"
+
+    if (allFailed) {
+      throw new Error("Unable to search DNS intelligence")
+    }
+
+    const rawDomains =
+      domainsRes.status === "fulfilled" ? domainsRes.value.items ?? [] : []
+    const rawClients =
+      clientsRes.status === "fulfilled" ? clientsRes.value.items ?? [] : []
+    const rawQueries =
+      queriesRes.status === "fulfilled" ? queriesRes.value.items ?? [] : []
+
+    const lower = trimmed.toLowerCase()
+
+    // 1. Domains: Exact match -> Prefix match -> Query volume
+    const sortedDomains = [...rawDomains]
+      .sort((a, b) => {
+        const aLower = a.domain.toLowerCase()
+        const bLower = b.domain.toLowerCase()
+        const aExact = aLower === lower
+        const bExact = bLower === lower
+        if (aExact && !bExact) return -1
+        if (!aExact && bExact) return 1
+        const aPrefix = aLower.startsWith(lower)
+        const bPrefix = bLower.startsWith(lower)
+        if (aPrefix && !bPrefix) return -1
+        if (!aPrefix && bPrefix) return 1
+        return (b.total_queries ?? 0) - (a.total_queries ?? 0)
+      })
+      .slice(0, limitPerCategory)
+
+    // 2. Clients: Exact match -> Prefix match -> Query volume
+    const sortedClients = [...rawClients]
+      .sort((a, b) => {
+        const aExact = a.client_ip === trimmed
+        const bExact = b.client_ip === trimmed
+        if (aExact && !bExact) return -1
+        if (!aExact && bExact) return 1
+        const aPrefix = a.client_ip.startsWith(trimmed)
+        const bPrefix = b.client_ip.startsWith(trimmed)
+        if (aPrefix && !bPrefix) return -1
+        if (!aPrefix && bPrefix) return 1
+        return (b.total_queries ?? 0) - (a.total_queries ?? 0)
+      })
+      .slice(0, limitPerCategory)
+
+    // 3. Queries: Exact match on domain or client_ip first, then chronological
+    const sortedQueries = [...rawQueries]
+      .sort((a, b) => {
+        const aExact =
+          a.domain.toLowerCase() === lower || a.client_ip === trimmed
+        const bExact =
+          b.domain.toLowerCase() === lower || b.client_ip === trimmed
+        if (aExact && !bExact) return -1
+        if (!aExact && bExact) return 1
+        return 0
+      })
+      .slice(0, limitPerCategory)
+
+    return {
+      domains: sortedDomains,
+      clients: sortedClients,
+      queries: sortedQueries,
+    }
+  },
 }
+

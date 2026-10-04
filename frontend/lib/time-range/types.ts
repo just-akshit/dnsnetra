@@ -10,6 +10,10 @@ export type TimeRangePreset =
   | "24h"
   | "7d"
   | "30d"
+  | "90d"
+  | "6m"
+  | "1y"
+  | "all_time"
 
 export interface PresetOption {
   id: TimeRangePreset
@@ -25,6 +29,10 @@ export const PRESET_OPTIONS: PresetOption[] = [
   { id: "24h", label: "Last 24 hours", durationMinutes: 1440 },
   { id: "7d", label: "Last 7 days", durationMinutes: 10080 },
   { id: "30d", label: "Last 30 days", durationMinutes: 43200 },
+  { id: "90d", label: "Last 90 days", durationMinutes: 129600 },
+  { id: "6m", label: "Last 6 months", durationMinutes: 259200 },
+  { id: "1y", label: "Last 1 year", durationMinutes: 525600 },
+  { id: "all_time", label: "All Time", durationMinutes: 525600 },
 ]
 
 export type TimeRange =

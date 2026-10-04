@@ -25,6 +25,7 @@ def _get_connection():
         dbname=DB_NAME,
         user=DB_USER,
         password=DB_PASSWORD,
+        options="-c timezone=UTC",
     )
 
 

@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS reputation_domains (
     status          VARCHAR(20)  NOT NULL DEFAULT 'malicious',
     source          VARCHAR(50)  NOT NULL DEFAULT 'URLHaus',
     confidence      FLOAT,
+    match_scope     VARCHAR(32)  NULL,
+    matched_domain  VARCHAR(255) NULL,
     first_seen      TIMESTAMP    NOT NULL DEFAULT NOW(),
     last_seen       TIMESTAMP    NOT NULL DEFAULT NOW(),
     times_seen      INTEGER      NOT NULL DEFAULT 1,

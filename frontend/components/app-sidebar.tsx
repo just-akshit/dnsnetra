@@ -2,11 +2,14 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
+import { authApi } from "@/lib/auth/api"
+import { useAuthUser } from "@/components/auth/AuthGuard"
 
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -22,11 +25,10 @@ import {
   UsersIcon,
   GlobeIcon,
   SearchIcon,
-  ShieldAlertIcon,
   CalendarCheckIcon,
-  BarChart3Icon,
   SettingsIcon,
   ShieldIcon,
+  LogOutIcon,
 } from "lucide-react"
 
 const navOverview = [
@@ -35,19 +37,14 @@ const navOverview = [
     url: "/dashboard",
     icon: <LayoutDashboardIcon />,
   },
+]
+
+const navAnalysis = [
   {
     title: "Reports",
     url: "/reports",
     icon: <FileTextIcon />,
   },
-  {
-    title: "Domain Intelligence",
-    url: "/domain-intelligence",
-    icon: <ShieldAlertIcon />,
-  },
-]
-
-const navInvestigate = [
   {
     title: "Domains",
     url: "/domains",
@@ -72,11 +69,6 @@ const navInvestigate = [
 
 const navSystem = [
   {
-    title: "Analytics",
-    url: "/analytics",
-    icon: <BarChart3Icon />,
-  },
-  {
     title: "Settings",
     url: "/settings",
     icon: <SettingsIcon />,
@@ -85,6 +77,13 @@ const navSystem = [
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
+  const router = useRouter()
+  const user = useAuthUser()
+
+  async function signOut() {
+    await authApi.logout().catch(() => {})
+    router.replace("/login")
+  }
 
   return (
     <Sidebar {...props}>
@@ -126,13 +125,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup>
-          <SidebarGroupLabel>Investigate</SidebarGroupLabel>
+          <SidebarGroupLabel>Analysis</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navInvestigate.map((item) => (
+              {navAnalysis.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
-                    isActive={pathname === item.url}
+                    isActive={
+                      pathname === item.url ||
+                      (item.url !== "/dashboard" && pathname.startsWith(item.url + "/"))
+                    }
                     tooltip={item.title}
                     render={<Link href={item.url} />}
                   >
@@ -164,6 +166,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton tooltip="Sign out" onClick={signOut}>
+              <LogOutIcon />
+              <span className="flex-1 truncate">Sign out</span>
+              {user && (
+                <span className="truncate text-xs text-muted-foreground">{user.username}</span>
+              )}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   )

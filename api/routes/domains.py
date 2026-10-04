@@ -56,12 +56,14 @@ def list_domains(
     verdict: Optional[str] = Query(None, description="Canonical verdict filter (Benign, Malicious, Review Needed, Unknown)"),
     label: Optional[str] = Query(None, description="Verdict filter alias"),
     search: Optional[str] = Query(None, description="Domain name search prefix/substring"),
+    sort: Optional[str] = Query(None, description="Sort column (e.g. total_queries, unique_clients, domain)"),
+    order: Optional[str] = Query(None, description="Sort direction (asc, desc)"),
     window: Optional[str] = Query(None),
     start_time: Optional[str] = Query(None),
     end_time: Optional[str] = Query(None),
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> PaginatedResponse[DomainSummaryItem]:
-    """Thin adapter over ReportingService.get_top_domains."""
+    """Canonical domain reporting with SQL-level verdict, search, and sorting."""
     eff_limit = page_size if (page_size is not None and page_size >= 1) else limit
     eff_offset = ((page - 1) * eff_limit) if (page is not None and page >= 1) else offset
 
@@ -84,19 +86,17 @@ def list_domains(
         offset=eff_offset,
         verdict_filter=canon_verdict,
         time_range=tr,
+        search=search.strip() if search and search.strip() else None,
+        sort_by=sort or "total_queries",
+        sort_order=order or "desc",
     )
-
-    items = result.items
-    if search and search.strip():
-        term = search.strip().lower()
-        items = [d for d in items if term in d.domain.lower()]
 
     return PaginatedResponse[DomainSummaryItem](
         total=result.total,
         limit=result.limit,
         offset=result.offset,
         has_more=result.has_more,
-        items=items,
+        items=result.items,
     )
 
 

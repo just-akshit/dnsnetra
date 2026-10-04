@@ -337,26 +337,16 @@ def get_report_queries(
     label: Optional[str] = Query(None, description="Verdict filter alias"),
     query_type: Optional[str] = Query(None, description="Filter by DNS query type (e.g. A, AAAA, TXT)"),
     search: Optional[str] = Query(None, description="Free text search (matched against domain or client_ip)"),
+    sort: Optional[str] = Query(None, description="Sort column (timestamp, client_ip, domain, query_type, final_label)"),
+    order: Optional[str] = Query(None, description="Sort direction (asc, desc)"),
     window: Optional[str] = Query(None),
     start_time: Optional[str] = Query(None),
     end_time: Optional[str] = Query(None),
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> PaginatedResponse[QueryEventItem]:
-    """Query log reporting endpoint."""
+    """Query log reporting endpoint with SQL search, verdict, and sorting."""
     eff_limit, eff_offset = _parse_pagination(limit, offset, page, page_size)
     service = ReportingService()
-
-    # Domain / client search disambiguation
-    filter_ip = client_ip
-    filter_dom = domain
-
-    if search and search.strip():
-        term = search.strip()
-        try:
-            ipaddress.ip_address(term)
-            filter_ip = filter_ip or term
-        except ValueError:
-            filter_dom = filter_dom or term
 
     # Canonical verdict normalization
     verdict_param = verdict or label
@@ -369,11 +359,14 @@ def get_report_queries(
 
     try:
         result = service.get_queries(
-            client_ip=filter_ip,
-            domain=filter_dom,
+            client_ip=client_ip.strip() if client_ip and client_ip.strip() else None,
+            domain=domain.strip() if domain and domain.strip() else None,
             verdict=canon_verdict,
             query_type=query_type,
             time_range=tr,
+            search=search.strip() if search and search.strip() else None,
+            sort_by=sort or "timestamp",
+            sort_order=order or "desc",
             limit=eff_limit,
             offset=eff_offset,
         )

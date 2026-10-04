@@ -36,7 +36,10 @@ function DomainsContent() {
   const [error, setError] = React.useState<string | null>(null)
   const [activeEntity, setActiveEntity] = React.useState<EntityIdentifier | null>(null)
 
-  // Fetch domains from backend API with composed filters: search, verdict, and time range
+  const activeSort = sorting.length > 0 ? sorting[0].id : undefined
+  const activeOrder = sorting.length > 0 ? (sorting[0].desc ? "desc" : "asc") : undefined
+
+  // Fetch domains from backend API with composed filters: search, verdict, time range, and sorting
   React.useEffect(() => {
     let cancelled = false
 
@@ -48,6 +51,8 @@ function DomainsContent() {
           pageSize: pagination.pageSize,
           search: search || undefined,
           verdict: verdict || undefined,
+          sort: activeSort,
+          order: activeOrder,
           window: backendParams.window,
           start_time: backendParams.start_time,
           end_time: backendParams.end_time,
@@ -78,6 +83,8 @@ function DomainsContent() {
     pagination.pageSize,
     search,
     verdict,
+    activeSort,
+    activeOrder,
     backendParams.window,
     backendParams.start_time,
     backendParams.end_time,
@@ -91,6 +98,8 @@ function DomainsContent() {
         pageSize: pagination.pageSize,
         search: search || undefined,
         verdict: verdict || undefined,
+        sort: activeSort,
+        order: activeOrder,
         window: backendParams.window,
         start_time: backendParams.start_time,
         end_time: backendParams.end_time,
@@ -111,6 +120,8 @@ function DomainsContent() {
     pagination.pageSize,
     search,
     verdict,
+    activeSort,
+    activeOrder,
     backendParams.window,
     backendParams.start_time,
     backendParams.end_time,

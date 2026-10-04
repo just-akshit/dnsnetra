@@ -3,6 +3,7 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { TimeRangeProvider } from "@/components/time-range"
+import { AuthGuard } from "@/components/auth/AuthGuard"
 
 export default function DashboardLayout({
   children,
@@ -10,6 +11,7 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   return (
+    <AuthGuard>
     <SidebarProvider
       style={
         {
@@ -32,5 +34,6 @@ export default function DashboardLayout({
         </React.Suspense>
       </SidebarInset>
     </SidebarProvider>
+    </AuthGuard>
   )
 }

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useSearchParams } from "next/navigation"
 import { DataTable } from "@/components/data-table"
 import { createQueryColumns } from "@/features/queries/query-columns"
 import { queryTabs, queryFilters, queryDefaultSort } from "@/features/queries/query-table-config"
@@ -14,6 +15,8 @@ import type { EntityIdentifier } from "@/lib/data-table/types"
 import { toast } from "sonner"
 
 function QueriesContent() {
+  const searchParams = useSearchParams()
+  const queryIdParam = searchParams.get("id")
   const { backendParams, label } = useTimeRange()
 
   const {
@@ -23,6 +26,7 @@ function QueriesContent() {
     tab,
     verdict,
     columnFilters,
+    setVerdict,
     onPaginationChange,
     onSortingChange,
     onSearchChange,
@@ -40,8 +44,14 @@ function QueriesContent() {
   const [error, setError] = React.useState<string | null>(null)
   const [activeEntity, setActiveEntity] = React.useState<EntityIdentifier | null>(null)
 
-  // Current tab filter mapping composed with direct verdict filter
-  const currentTab = tab || "all"
+  // Current tab filter mapping harmonized with verdict filter
+  const currentTab =
+    verdict === "Review Needed"
+      ? "suspicious"
+      : verdict === "Malicious"
+      ? "blocked"
+      : tab || "all"
+
   const tabVerdict =
     currentTab === "suspicious"
       ? "Review Needed"
@@ -50,6 +60,23 @@ function QueriesContent() {
       : undefined
 
   const effectiveVerdict = verdict || tabVerdict
+
+  const handleCustomTabChange = React.useCallback(
+    (newTab: string) => {
+      onTabChange(newTab)
+      if (newTab === "suspicious") {
+        setVerdict("Review Needed")
+      } else if (newTab === "blocked") {
+        setVerdict("Malicious")
+      } else {
+        setVerdict(null)
+      }
+    },
+    [onTabChange, setVerdict]
+  )
+
+  const activeSort = sorting.length > 0 ? sorting[0].id : undefined
+  const activeOrder = sorting.length > 0 ? (sorting[0].desc ? "desc" : "asc") : undefined
 
   // Fetch queries from backend API whenever pagination, search, filters, or time range changes
   React.useEffect(() => {
@@ -63,15 +90,30 @@ function QueriesContent() {
           pageSize: pagination.pageSize,
           search: search || undefined,
           verdict: effectiveVerdict,
+          sort: activeSort,
+          order: activeOrder,
           window: backendParams.window,
           start_time: backendParams.start_time,
           end_time: backendParams.end_time,
         })
         if (!cancelled) {
-          setData(res.items ?? [])
+          const items = res.items ?? []
+          setData(items)
           setTotalRows(res.total ?? 0)
           setError(null)
           setLoading(false)
+
+          if (queryIdParam) {
+            const match = items.find((q) => String(q.id) === queryIdParam)
+            if (match) {
+              setActiveEntity({
+                type: "query",
+                id: String(match.id),
+                label: `${match.domain} (${match.query_type})`,
+                data: match,
+              })
+            }
+          }
         }
       } catch (err: unknown) {
         if (!cancelled) {
@@ -93,9 +135,12 @@ function QueriesContent() {
     pagination.pageSize,
     search,
     effectiveVerdict,
+    activeSort,
+    activeOrder,
     backendParams.window,
     backendParams.start_time,
     backendParams.end_time,
+    queryIdParam,
   ])
 
   const handleRetry = React.useCallback(() => {
@@ -106,6 +151,8 @@ function QueriesContent() {
         pageSize: pagination.pageSize,
         search: search || undefined,
         verdict: effectiveVerdict,
+        sort: activeSort,
+        order: activeOrder,
         window: backendParams.window,
         start_time: backendParams.start_time,
         end_time: backendParams.end_time,
@@ -126,6 +173,8 @@ function QueriesContent() {
     pagination.pageSize,
     search,
     effectiveVerdict,
+    activeSort,
+    activeOrder,
     backendParams.window,
     backendParams.start_time,
     backendParams.end_time,
@@ -185,7 +234,7 @@ function QueriesContent() {
         searchPlaceholder="Search domain or client IP..."
         tabs={queryTabs}
         activeTab={currentTab}
-        onTabChange={onTabChange}
+        onTabChange={handleCustomTabChange}
         filters={queryFilters}
         columnFilters={columnFilters}
         onColumnFiltersChange={onColumnFiltersChange}

@@ -45,7 +45,7 @@ export function TimeRangeProvider({
 
     if (windowParam) {
       const validPresets: TimeRangePreset[] = [
-        "30m", "1h", "6h", "12h", "24h", "7d", "30d"
+        "30m", "1h", "6h", "12h", "24h", "7d", "30d", "90d", "6m", "1y", "all_time"
       ]
       if (validPresets.includes(windowParam as TimeRangePreset)) {
         return {

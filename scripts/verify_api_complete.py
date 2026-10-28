@@ -32,7 +32,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from fastapi.testclient import TestClient
 
-from api.auth import create_access_token
+from api.auth import get_user_by_username
+from scripts._session_auth import bearer_for_username
 from api.main import app
 from domain_profiling.connection import get_db_connection
 
@@ -58,6 +59,10 @@ def get_existing_entities() -> tuple[str, str, str]:
     return existing_domain, existing_client, existing_review_domain
 
 
+def _user_exists(username: str) -> bool:
+    return get_user_by_username(username) is not None
+
+
 def run_master_verification() -> bool:
     print("=" * 80)
     print("DNSNETRA PHASE 2D.1 — MASTER API ENDPOINT VERIFICATION SUITE")
@@ -68,16 +73,16 @@ def run_master_verification() -> bool:
     domain, client_ip, review_domain = get_existing_entities()
     print(f"[*] Authoritative Test Entities: Domain='{domain}', Client='{client_ip}', ReviewDomain='{review_domain}'")
 
-    # 2. Authenticate as admin
-    auth_res = client.post("/api/v1/auth/token", data={"username": "admin@security.local", "password": "admin"})
-    if auth_res.status_code != 200:
-        print(f"[FAIL] Could not authenticate test admin: HTTP {auth_res.status_code}")
+    # 2. Authenticate as admin with a real server-side session
+    try:
+        admin_token = bearer_for_username("admin")
+    except SystemExit as exc:
+        print(f"[FAIL] Could not authenticate test admin: {exc}")
         return False
-    admin_token = auth_res.json()["access_token"]
     auth_headers = {"Authorization": f"Bearer {admin_token}"}
 
-    # Generate analyst token for authorization checks
-    analyst_token = create_access_token(data={"sub": "analyst@security.local", "role": "analyst"})
+    # Generate analyst session for authorization checks
+    analyst_token = bearer_for_username("pytest_analyst") if _user_exists("pytest_analyst") else admin_token
     analyst_headers = {"Authorization": f"Bearer {analyst_token}"}
 
     # Define the canonical master route matrix (30 functional endpoints)
@@ -86,9 +91,7 @@ def run_master_verification() -> bool:
         # 1. Health
         {"method": "GET", "path": "/health", "auth": False, "params": {}, "json": None, "data": None},
 
-        # 2. Auth
-        {"method": "POST", "path": "/api/v1/auth/token", "auth": False, "params": {}, "json": None, "data": {"username": "admin@security.local", "password": "admin"}},
-        {"method": "POST", "path": "/api/v1/auth/login", "auth": False, "params": {}, "json": {"username": "admin@security.local", "password": "admin"}, "data": None},
+        # 2. Auth (login endpoints are negative-tested: CAPTCHA is mandatory)
         {"method": "GET", "path": "/api/v1/auth/me", "auth": True, "params": {}, "json": None, "data": None},
 
         # 3. Dashboard
@@ -214,6 +217,16 @@ def run_master_verification() -> bool:
         {"name": "GET /api/v1/domains without token", "call": lambda: client.get("/api/v1/domains"), "expected": 401},
         {"name": "GET /api/v1/clients without token", "call": lambda: client.get("/api/v1/clients"), "expected": 401},
         {"name": "GET /api/v1/status without token", "call": lambda: client.get("/api/v1/status"), "expected": 401},
+
+        # 422: login without a CAPTCHA must never authenticate
+        {
+            "name": "POST /api/v1/auth/login without CAPTCHA",
+            "call": lambda: client.post(
+                "/api/v1/auth/login",
+                json={"username": "admin", "password": "not-a-real-password"},
+            ),
+            "expected": 422,
+        },
 
         # 403: Forbidden (Analyst trying to perform Admin mutation)
         {

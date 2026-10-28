@@ -31,7 +31,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from fastapi.testclient import TestClient
 
-from api.auth import create_access_token
+from scripts._session_auth import bearer_for_username
 from api.main import app
 from domain_profiling.connection import get_db_connection
 from investigation.service import InvestigationService
@@ -41,7 +41,7 @@ from reporting.service import ReportingService
 from time_engine import resolve_time_range
 
 client = TestClient(app)
-token = create_access_token(data={"sub": "admin@security.local", "role": "admin"})
+token = bearer_for_username("admin")
 headers = {"Authorization": f"Bearer {token}"}
 
 

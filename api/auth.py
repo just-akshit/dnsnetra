@@ -9,7 +9,6 @@ Authoritative authentication engine implementing:
 - Strict password policy with reserved-name protection and password != username enforcement
 - Centralized RBAC dependency guards (ADMIN, ANALYST, SUPPORT)
 - CSRF protection for cookie-authenticated browser requests
-- Backward compatibility fallback for test JWT tokens
 """
 
 from __future__ import annotations
@@ -17,15 +16,14 @@ from __future__ import annotations
 import logging
 import os
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import Any, Optional
 
 import argon2
 from argon2.exceptions import VerifyMismatchError, VerificationError, InvalidHash
 import bcrypt
-import jwt
-from fastapi import Cookie, Depends, Header, HTTPException, Request, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Cookie, Depends, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 from labeler.intel.reputation.connection import get_connection
@@ -38,15 +36,6 @@ from .sessions import (
 )
 
 logger = logging.getLogger("api_auth")
-
-DEV_INSECURE_TEST_SECRET = "dnsnetra-dev-test-jwt-secret-do-not-use-in-production"
-INSECURE_SECRETS = {
-    "dnsnetra-secure-default-change-in-prod",
-    "dnsnetra-dev-test-jwt-secret-do-not-use-in-production",
-    "secret",
-    "changeme",
-    "default",
-}
 
 RESERVED_USERNAMES = {
     "admin",
@@ -70,43 +59,7 @@ _hasher = argon2.PasswordHasher(
     type=argon2.Type.ID,
 )
 
-
-def get_jwt_secret_key(
-    env: Optional[str] = None,
-    secret_key: Optional[str] = None,
-) -> str:
-    """Retrieve and validate JWT secret key for backward compatibility."""
-    current_env = (
-        env
-        or os.getenv("DNSNETRA_ENV")
-        or os.getenv("APP_ENV")
-        or os.getenv("ENVIRONMENT")
-        or "development"
-    ).lower().strip()
-
-    key = secret_key if secret_key is not None else (
-        os.getenv("AUTH_SESSION_SECRET") or os.getenv("AUTH_SECRET_KEY") or os.getenv("JWT_SECRET")
-    )
-
-    if current_env in ("production", "prod"):
-        if not key or not key.strip() or key in INSECURE_SECRETS:
-            raise RuntimeError(
-                f"CRITICAL SECURITY CONFIGURATION ERROR: AUTH_SESSION_SECRET must be set to a secure, "
-                f"non-default secret in production environment (current_env='{current_env}')."
-            )
-        return key
-
-    if key and key.strip():
-        return key
-
-    return DEV_INSECURE_TEST_SECRET
-
-
-SECRET_KEY = get_jwt_secret_key()
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))  # 24 hours
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token", auto_error=False)
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
 # ---------------------------------------------------------------------------
@@ -371,18 +324,6 @@ def change_user_password(user_id: int, new_password: str) -> None:
     revoke_all_user_sessions(user_id)
 
 
-def create_access_token(data: dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
-    """Generate signed JWT access token for backward compatibility with existing tests."""
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
-    secret = get_jwt_secret_key()
-    return jwt.encode(to_encode, secret, algorithm=ALGORITHM)
-
-
 # ---------------------------------------------------------------------------
 # Centralized Authentication Dependencies
 # ---------------------------------------------------------------------------
@@ -392,27 +333,16 @@ get_user_by_email = get_user_by_username
 
 async def get_current_user(
     request: Request,
-    bearer_token: Optional[str] = Depends(oauth2_scheme),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
     canonical_cookie: Optional[str] = Cookie(None, alias="dnsnetra_session"),
     legacy_cookie: Optional[str] = Cookie(None, alias="session_token"),
-    authorization: Optional[str] = Header(None),
 ) -> dict[str, Any]:
     """
-    Authoritative dependency to resolve the current active user:
-    1. Inspects Bearer token in Authorization header or OAuth2 scheme (auth_method='bearer').
-    2. Inspects canonical cookie dnsnetra_session, then legacy session_token (auth_method='cookie').
-    3. If auth_method is 'cookie', executes CSRF protection validation on state-changing requests.
-    4. Resolves against server-side PostgreSQL sessions.
-    5. If not found in sessions, falls back to JWT decoding for existing test fixtures.
+    Resolve the caller from a server-side session only.
+    A bearer token and a session cookie carry the same opaque token.
     """
-    token = bearer_token
+    token = credentials.credentials if credentials else None
     auth_method = "bearer"
-
-    if not token and authorization:
-        parts = authorization.split()
-        if len(parts) == 2 and parts[0].lower() == "bearer":
-            token = parts[1]
-            auth_method = "bearer"
 
     if not token:
         token = canonical_cookie or legacy_cookie
@@ -432,34 +362,17 @@ async def get_current_user(
     if auth_method == "cookie":
         verify_csrf_protection(request)
 
-    # 1. Primary: Server-side session verification
     session_user = get_session_and_user(token)
-    if session_user:
-        request.state.session_token = token
-        request.state.current_user = session_user
-        return session_user
+    if not session_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid, expired, or revoked authentication session",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-    # 2. Fallback: JWT verification (retained for backward compatibility with existing tests)
-    secret = get_jwt_secret_key()
-    try:
-        payload = jwt.decode(token, secret, algorithms=[ALGORITHM])
-        identifier: Optional[str] = payload.get("sub")
-        if identifier:
-            user = get_user_by_email(identifier)
-            if user and user.get("is_active") and user.get("status", "ACTIVE") == "ACTIVE":
-                if payload.get("role"):
-                    user["role"] = payload["role"]
-                request.state.session_token = None
-                request.state.current_user = user
-                return user
-    except Exception:
-        pass
-
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid, expired, or revoked authentication session",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    request.state.session_token = token
+    request.state.current_user = session_user
+    return session_user
 
 
 async def require_authenticated_user(

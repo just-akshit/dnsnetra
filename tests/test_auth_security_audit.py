@@ -127,11 +127,18 @@ def _client(**kw) -> TestClient:
 
 
 # ===========================================================================
-# AUTH-01: published default JWT secret + JWT fallback = auth bypass
+# AUTH-01 / AUTH-05: no JWT path may exist
 # ===========================================================================
 
+LEGACY_PUBLISHED_SECRET = "dnsnetra-dev-test-jwt-secret-do-not-use-in-production"
+
+
 def _force_legacy_default_env(monkeypatch) -> None:
-    """Reproduce the shipped configuration: no secret, no explicit environment."""
+    """Reproduce the shipped configuration: no secret, no explicit environment.
+
+    Without this the local `.env` supplies a strong secret and the surviving
+    JWT fallback hides behind it instead of being exercised.
+    """
     for name in (
         "AUTH_SESSION_SECRET",
         "AUTH_SECRET_KEY",
@@ -143,50 +150,44 @@ def _force_legacy_default_env(monkeypatch) -> None:
         monkeypatch.delenv(name, raising=False)
 
 
-@pytest.mark.xfail(reason="AUTH-01: default signing secret is a published constant", strict=False)
-def test_default_secret_is_never_used(monkeypatch):
-    _force_legacy_default_env(monkeypatch)
-    assert auth.get_jwt_secret_key() != auth.DEV_INSECURE_TEST_SECRET
+def _legacy_token(claims: dict) -> str:
+    return pyjwt.encode(claims, LEGACY_PUBLISHED_SECRET, algorithm="HS256")
 
 
-@pytest.mark.xfail(reason="AUTH-01: forged token with published secret is accepted", strict=False)
-def test_forged_admin_token_from_public_constant_is_rejected(monkeypatch):
+def test_legacy_jwt_signed_with_published_secret_is_rejected(monkeypatch):
     _force_legacy_default_env(monkeypatch)
-    forged = pyjwt.encode(
-        {"sub": "admin", "role": "ADMIN", "exp": datetime.now(timezone.utc) + timedelta(minutes=5)},
-        auth.DEV_INSECURE_TEST_SECRET,
-        algorithm="HS256",
+    forged = _legacy_token(
+        {
+            "sub": "admin",
+            "role": "ADMIN",
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+        }
     )
     res = _client().get("/api/v1/users?limit=1", headers={"Authorization": f"Bearer {forged}"})
     assert res.status_code == 401
 
 
-@pytest.mark.xfail(reason="AUTH-01: token without exp never expires", strict=False)
 def test_token_without_expiry_is_rejected(monkeypatch):
     _force_legacy_default_env(monkeypatch)
-    forged = pyjwt.encode(
-        {"sub": "admin", "role": "ADMIN"},  # no exp
-        auth.DEV_INSECURE_TEST_SECRET,
-        algorithm="HS256",
-    )
+    forged = _legacy_token({"sub": "admin", "role": "ADMIN"})
     res = _client().get("/api/v1/auth/me", headers={"Authorization": f"Bearer {forged}"})
     assert res.status_code == 401
 
 
-@pytest.mark.xfail(reason="AUTH-05: JWT role claim overrides the database role", strict=False)
-def test_jwt_role_claim_cannot_escalate_privileges(mk_user):
+def test_jwt_role_claim_cannot_escalate_privileges(mk_user, monkeypatch):
+    _force_legacy_default_env(monkeypatch)
     username, _ = mk_user("escalate", role="ANALYST")
-    token = auth.create_access_token({"sub": username, "role": "ADMIN"})
-    res = _client().get("/api/v1/users?limit=1", headers={"Authorization": f"Bearer {token}"})
-    assert res.status_code == 403
+    forged = _legacy_token({"sub": username, "role": "ADMIN"})
+    res = _client().get("/api/v1/users?limit=1", headers={"Authorization": f"Bearer {forged}"})
+    assert res.status_code == 401
 
 
-@pytest.mark.xfail(reason="AUTH-05: JWTs survive session revocation", strict=False)
-def test_jwt_is_revoked_when_sessions_are_revoked(mk_user):
+def test_jwt_is_revoked_when_sessions_are_revoked(mk_user, monkeypatch):
+    _force_legacy_default_env(monkeypatch)
     username, uid = mk_user("revoke", role="ANALYST")
-    token = auth.create_access_token({"sub": username, "role": "ANALYST"})
+    forged = _legacy_token({"sub": username, "role": "ANALYST"})
     sessions_mod.revoke_all_user_sessions(uid)
-    res = _client().get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    res = _client().get("/api/v1/auth/me", headers={"Authorization": f"Bearer {forged}"})
     assert res.status_code == 401
 
 

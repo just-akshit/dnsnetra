@@ -29,7 +29,6 @@ from fastapi.testclient import TestClient
 
 from api.auth import (
     authenticate_user,
-    create_access_token,
     get_user_by_id,
     get_user_by_username,
     hash_password,

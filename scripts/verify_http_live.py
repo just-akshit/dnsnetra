@@ -13,6 +13,7 @@ import time
 from fastapi.testclient import TestClient
 
 from api.main import app
+from scripts._session_auth import bearer_for_username
 
 client = TestClient(app)
 
@@ -33,23 +34,17 @@ def verify():
     res = client.get("/health")
     check("GET /health", res.status_code, res.status_code == 200 and res.json().get("status") == "healthy")
 
-    # 2. Auth Token (OAuth2 form)
+    # 2. Auth session (server-side, created directly because login needs a CAPTCHA)
     t0 = time.perf_counter()
-    res = client.post("/api/v1/auth/token", data={"username": "admin@security.local", "password": "admin"})
+    token = bearer_for_username("admin")
     auth_latency = (time.perf_counter() - t0) * 1000
-    token_ok = res.status_code == 200 and "access_token" in res.json()
-    check("POST /api/v1/auth/token", res.status_code, token_ok, f"({auth_latency:.1f}ms)")
-    token = res.json().get("access_token")
+    check("session for admin", 200, bool(token), f"({auth_latency:.1f}ms)")
     headers = {"Authorization": f"Bearer {token}"}
 
-    # 3. Auth JSON Login
-    res = client.post("/api/v1/auth/login", json={"email": "admin@security.local", "password": "admin"})
-    check("POST /api/v1/auth/login", res.status_code, res.status_code == 200 and "access_token" in res.json())
-
-    # 4. Auth Me
+    # 3. Auth Me
     res = client.get("/api/v1/auth/me", headers=headers)
-    me_ok = res.status_code == 200 and res.json().get("email") == "admin@security.local"
-    check("GET /api/v1/auth/me", res.status_code, me_ok, f"user={res.json().get('email')}")
+    me_ok = res.status_code == 200 and res.json().get("username") == "admin"
+    check("GET /api/v1/auth/me", res.status_code, me_ok, f"user={res.json().get('username')}")
 
     # 5. Dashboard Bundle
     t0 = time.perf_counter()

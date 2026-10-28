@@ -247,14 +247,12 @@ def test_must_change_password_blocks_privileged_access(mk_user):
 # AUTH-07: approve bypasses lifecycle and admin guard
 # ===========================================================================
 
-@pytest.mark.xfail(reason="AUTH-07: /approve re-activates a DISABLED user", strict=False)
 def test_approve_rejects_non_pending_account(mk_user, admin_headers):
     _, uid = mk_user("disabled", status="DISABLED")
     res = _client().post(f"/api/v1/users/{uid}/approve", json={"role": "ANALYST"}, headers=admin_headers)
     assert res.status_code == 400
 
 
-@pytest.mark.xfail(reason="AUTH-07: /approve can grant ADMIN role", strict=False)
 def test_approve_cannot_grant_admin_role(mk_user, admin_headers):
     _, uid = mk_user("pending", status="PENDING")
     _client().post(f"/api/v1/users/{uid}/approve", json={"role": "ADMIN"}, headers=admin_headers)

@@ -459,15 +459,37 @@ def approve_user(
 ) -> GenericMessageResponse:
     client_ip, user_agent = _extract_client_meta(request)
 
+    if payload.role not in (UserRole.ANALYST, UserRole.SUPPORT):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Approval may only assign the ANALYST or SUPPORT role",
+        )
+
     target_user = get_user_by_id(user_id)
     if not target_user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"User with ID {user_id} not found",
         )
+    if target_user["status"] != "PENDING":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only PENDING accounts can be approved",
+        )
 
     with get_connection() as conn:
         with conn.cursor() as cur:
+            cur.execute(
+                "SELECT status FROM dashboard_users WHERE id = %s FOR UPDATE;",
+                (user_id,),
+            )
+            row = cur.fetchone()
+            if not row or row[0] != "PENDING":
+                conn.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Account is no longer pending approval",
+                )
             cur.execute(
                 """
                 UPDATE dashboard_users
@@ -475,10 +497,16 @@ def approve_user(
                     is_active = true,
                     role = %s,
                     updated_at = NOW()
-                WHERE id = %s;
+                WHERE id = %s AND status = 'PENDING';
                 """,
                 (payload.role.value, user_id),
             )
+            if cur.rowcount != 1:
+                conn.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Account is no longer pending approval",
+                )
             conn.commit()
 
     log_audit_event(

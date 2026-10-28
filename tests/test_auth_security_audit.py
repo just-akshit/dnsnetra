@@ -287,9 +287,9 @@ def test_noop_update_does_not_revoke_sessions(mk_user, admin_headers):
 # AUTH-06: X-Forwarded-For spoofing / rate-limit bypass
 # ===========================================================================
 
-@pytest.mark.xfail(reason="AUTH-06: left-most XFF hop is trusted (client-controlled)", strict=False)
-def test_rate_limit_cannot_be_bypassed_with_spoofed_xff():
-    proxy_client = _client(client=("127.0.0.1", 4444))  # peer is in TRUSTED_PROXIES
+def test_rate_limit_cannot_be_bypassed_with_spoofed_xff(monkeypatch):
+    monkeypatch.setenv("TRUSTED_PROXIES", "10.255.255.1")
+    proxy_client = _client(client=("127.0.0.1", 4444))  # peer is NOT a configured proxy
     codes = [
         proxy_client.get(
             "/api/v1/auth/captcha", headers={"X-Forwarded-For": f"203.0.113.{i}"}

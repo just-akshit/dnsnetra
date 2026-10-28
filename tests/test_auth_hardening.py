@@ -634,20 +634,33 @@ def test_audit_logs_contain_no_sensitive_values():
 # 13. Trusted Proxy & Spoofed Header Defense
 # ===========================================================================
 
-def test_trusted_proxy_ignores_spoofed_headers_from_untrusted_peer():
+def test_trusted_proxy_ignores_spoofed_headers_from_untrusted_peer(monkeypatch):
     """✓ get_client_ip ignores X-Forwarded-For if direct peer is not in TRUSTED_PROXIES."""
     class DummyRequest:
         def __init__(self, peer_ip: str, forwarded_for: str):
             self.client = type("Client", (), {"host": peer_ip})()
             self.headers = {"x-forwarded-for": forwarded_for}
 
+    monkeypatch.delenv("TRUSTED_PROXIES", raising=False)
     # 1. Untrusted peer trying to spoof
     req_untrusted = DummyRequest(peer_ip="203.0.113.5", forwarded_for="1.1.1.1, 10.0.0.1")
     assert get_client_ip(req_untrusted) == "203.0.113.5"
 
     # 2. Trusted proxy (127.0.0.1) forwarding real client IP
+    monkeypatch.setenv("TRUSTED_PROXIES", "127.0.0.1")
     req_trusted = DummyRequest(peer_ip="127.0.0.1", forwarded_for="198.51.100.42, 127.0.0.1")
     assert get_client_ip(req_trusted) == "198.51.100.42"
+
+
+def test_xff_walks_from_the_right(monkeypatch):
+    """✓ The rightmost untrusted hop wins, so a client cannot prepend a forged address."""
+    class DummyRequest:
+        def __init__(self):
+            self.client = type("Client", (), {"host": "127.0.0.1"})()
+            self.headers = {"x-forwarded-for": "6.6.6.6, 198.51.100.7, 127.0.0.1"}
+
+    monkeypatch.setenv("TRUSTED_PROXIES", "127.0.0.1")
+    assert get_client_ip(DummyRequest()) == "198.51.100.7"
 
 
 # ===========================================================================

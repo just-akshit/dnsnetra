@@ -24,7 +24,12 @@ export default function LoginPage() {
 
   // Already signed in: skip the form.
   React.useEffect(() => {
-    authApi.me().then((u) => u && router.replace("/dashboard")).catch(() => {})
+    authApi
+      .me()
+      .then((u) =>
+        u && router.replace(u.must_change_password ? "/change-password" : "/dashboard")
+      )
+      .catch(() => {})
   }, [router])
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -37,13 +42,13 @@ export default function LoginPage() {
     setPending(true)
     setError(null)
     try {
-      await authApi.login({
+      const result = await authApi.login({
         username: username.trim(),
         password,
         captcha_id: captcha.challenge.captcha_id,
         captcha_answer: captcha.answer.trim(),
       })
-      router.replace("/dashboard")
+      router.replace(result.user.must_change_password ? "/change-password" : "/dashboard")
     } catch (err) {
       const e2 = err instanceof AuthApiError ? err : null
       setError(e2?.message ?? "Something went wrong. Please try again.")

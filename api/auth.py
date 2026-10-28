@@ -330,6 +330,16 @@ def change_user_password(user_id: int, new_password: str) -> None:
 
 get_user_by_email = get_user_by_username
 
+PASSWORD_CHANGE_ALLOWLIST = {
+    "/api/v1/auth/me",
+    "/api/v1/auth/logout",
+    "/api/v1/auth/change-password",
+}
+
+
+def _requires_password_change(user: dict[str, Any], path: str) -> bool:
+    return bool(user.get("must_change_password")) and path.rstrip("/") not in PASSWORD_CHANGE_ALLOWLIST
+
 
 async def get_current_user(
     request: Request,
@@ -368,6 +378,13 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid, expired, or revoked authentication session",
             headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if _requires_password_change(session_user, request.url.path):
+        raise HTTPException(
+            status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+            detail="Password change required",
+            headers={"X-Password-Change-Required": "true"},
         )
 
     request.state.session_token = token

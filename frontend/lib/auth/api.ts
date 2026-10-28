@@ -18,6 +18,7 @@ export type AuthErrorKind =
   | "taken"
   | "validation"
   | "network"
+  | "password_change_required"
   | "unknown"
 
 export class AuthApiError extends Error {
@@ -71,6 +72,8 @@ function classify(status: number, detail: string): AuthApiError {
   }
   if (d.includes("pending") || d.includes("awaiting"))
     return new AuthApiError("pending", "Your account is pending administrator approval.")
+  if (status === 428)
+    return new AuthApiError("password_change_required", "You must change your password before continuing.")
   if (status === 401 || status === 403)
     return new AuthApiError("credentials", "Incorrect username or password")
   if (status === 409) return new AuthApiError("taken", "That username is already taken.")
@@ -120,6 +123,12 @@ export const authApi = {
   }) => post<{ message: string; username: string; status: string }>("/signup", b),
 
   logout: () => post<unknown>("/logout", {}),
+
+  changePassword: (b: {
+    current_password: string
+    new_password: string
+    confirm_password: string
+  }) => post<{ message: string; session_token: string }>("/change-password", b),
 
   /** Resolves to null when there is no valid session. */
   async me(): Promise<AuthUser | null> {

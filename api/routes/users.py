@@ -285,7 +285,7 @@ def create_user(
                     must_change_password,
                     created_at,
                     updated_at
-                ) VALUES (%s, %s, %s, NULL, %s, %s, %s, false, NOW(), NOW())
+                ) VALUES (%s, %s, %s, NULL, %s, %s, %s, true, NOW(), NOW())
                 RETURNING id, created_at, updated_at;
                 """,
                 (
@@ -320,7 +320,7 @@ def create_user(
         is_active=is_active,
         created_at=created_at,
         updated_at=updated_at,
-        must_change_password=False,
+        must_change_password=True,
     )
 
 

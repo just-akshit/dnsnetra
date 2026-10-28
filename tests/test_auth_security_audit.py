@@ -221,15 +221,26 @@ def test_oauth2_form_login_requires_a_captcha(mk_user):
 # AUTH-04: must_change_password is never enforced
 # ===========================================================================
 
-@pytest.mark.xfail(reason="AUTH-04: must_change_password is stored but never enforced", strict=False)
 def test_must_change_password_blocks_privileged_access(mk_user):
     username, _ = mk_user("mustchange", role="ADMIN", must_change=True)
     client = _client()
-    login = client.post("/api/v1/auth/login", json=_login_body(username))
-    assert login.status_code == 200
-    token = login.json()["session_token"]
+    captcha_id, answer = issue_captcha()
+    login_res = client.post(
+        "/api/v1/auth/login",
+        json={
+            "username": username,
+            "password": PASSWORD,
+            "captcha_id": captcha_id,
+            "captcha_answer": answer,
+        },
+    )
+    assert login_res.status_code == 200
+    token = login_res.json()["session_token"]
     res = client.get("/api/v1/users?limit=1", headers={"Authorization": f"Bearer {token}"})
-    assert res.status_code in (403, 428)
+    assert res.status_code == 428
+    me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me.status_code == 200
+    assert me.json()["must_change_password"] is True
 
 
 # ===========================================================================

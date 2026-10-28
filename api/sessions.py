@@ -98,7 +98,8 @@ def get_session_and_user(raw_token: str) -> Optional[dict[str, Any]]:
                     u.status,
                     u.is_active,
                     u.created_at,
-                    u.last_login_at
+                    u.last_login_at,
+                    u.must_change_password
                 FROM sessions s
                 JOIN dashboard_users u ON s.user_id = u.id
                 WHERE s.session_token_hash = %s
@@ -123,6 +124,7 @@ def get_session_and_user(raw_token: str) -> Optional[dict[str, Any]]:
                 is_active,
                 created_at,
                 last_login_at,
+                must_change_password,
             ) = row
 
             now = datetime.now(timezone.utc)
@@ -152,6 +154,7 @@ def get_session_and_user(raw_token: str) -> Optional[dict[str, Any]]:
                 "is_active": is_active,
                 "created_at": created_at,
                 "last_login_at": last_login_at,
+                "must_change_password": bool(must_change_password),
             }
 
 

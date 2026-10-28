@@ -33,11 +33,10 @@ from ..auth import (
     get_user_by_username,
     hash_password,
     normalize_username,
-    require_admin,
     validate_password_strength,
     validate_username,
 )
-from ..rbac import UserRole, UserStatus
+from ..rbac import UserRole, UserStatus, require_permission
 from ..sessions import revoke_all_user_sessions
 from ..trusted_proxy import get_client_ip
 
@@ -143,7 +142,7 @@ def list_users(
     status_filter: Optional[str] = Query(None, alias="status", description="Filter by status (PENDING, ACTIVE, DISABLED)"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: dict[str, Any] = Depends(require_permission("users:read")),
 ) -> UserListResponse:
     conditions = []
     params: list[Any] = []
@@ -219,7 +218,7 @@ def list_users(
 )
 def get_user(
     user_id: int,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: dict[str, Any] = Depends(require_permission("users:read")),
 ) -> UserDetail:
     user = get_user_by_id(user_id)
     if not user:
@@ -244,7 +243,7 @@ def get_user(
 def create_user(
     payload: AdminCreateUserRequest,
     request: Request,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: dict[str, Any] = Depends(require_permission("users:create")),
 ) -> UserDetail:
     client_ip, user_agent = _extract_client_meta(request)
 
@@ -338,7 +337,7 @@ def update_user(
     user_id: int,
     payload: UpdateUserRequest,
     request: Request,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: dict[str, Any] = Depends(require_permission("users:update")),
 ) -> UserDetail:
     client_ip, user_agent = _extract_client_meta(request)
 
@@ -455,7 +454,7 @@ def approve_user(
     user_id: int,
     payload: ApproveUserRequest,
     request: Request,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: dict[str, Any] = Depends(require_permission("users:update")),
 ) -> GenericMessageResponse:
     client_ip, user_agent = _extract_client_meta(request)
 
@@ -537,7 +536,7 @@ def approve_user(
 def disable_user(
     user_id: int,
     request: Request,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: dict[str, Any] = Depends(require_permission("users:update")),
 ) -> GenericMessageResponse:
     client_ip, user_agent = _extract_client_meta(request)
 
@@ -602,7 +601,7 @@ def disable_user(
 def enable_user(
     user_id: int,
     request: Request,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: dict[str, Any] = Depends(require_permission("users:update")),
 ) -> GenericMessageResponse:
     client_ip, user_agent = _extract_client_meta(request)
 
@@ -655,7 +654,7 @@ def reset_password(
     user_id: int,
     payload: ResetPasswordRequest,
     request: Request,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: dict[str, Any] = Depends(require_permission("users:update")),
 ) -> GenericMessageResponse:
     client_ip, user_agent = _extract_client_meta(request)
 
@@ -717,7 +716,7 @@ def reset_password(
 def revoke_sessions(
     user_id: int,
     request: Request,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: dict[str, Any] = Depends(require_permission("users:update")),
 ) -> RevokeSessionsResponse:
     client_ip, user_agent = _extract_client_meta(request)
 
@@ -760,7 +759,7 @@ def list_audit_logs(
     user_id: Optional[int] = Query(None, description="Filter by actor or target user ID"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: dict[str, Any] = Depends(require_permission("audit_logs:read")),
 ) -> dict[str, Any]:
     items, total = get_audit_logs(
         limit=limit,

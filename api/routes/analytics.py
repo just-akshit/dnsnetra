@@ -12,7 +12,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from api.auth import get_current_user
+from api.rbac import require_permission
 from api.schemas import (
     AnalyticsMetrics,
     AnalyticsTimelineBucket,
@@ -42,7 +42,7 @@ def get_domain_analytics(
     window: Optional[str] = Query(None, description="Preset window (e.g. 15m, 1h, 24h, 7d)"),
     start: Optional[str] = Query(None, description="ISO-8601 start timestamp"),
     end: Optional[str] = Query(None, description="ISO-8601 end timestamp"),
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("analytics:read")),
 ) -> DomainAnalyticsResponse:
     """Compose domain analytics using shared ReportingService logic."""
     # Map legacy "60m" to canonical "1h"

@@ -13,7 +13,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from api.auth import get_current_user
+from api.rbac import require_permission
 from api.schemas import (
     CanonicalVerdict,
     DomainSummaryItem,
@@ -61,7 +61,7 @@ def list_domains(
     window: Optional[str] = Query(None),
     start_time: Optional[str] = Query(None),
     end_time: Optional[str] = Query(None),
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("domains:read")),
 ) -> PaginatedResponse[DomainSummaryItem]:
     """Canonical domain reporting with SQL-level verdict, search, and sorting."""
     eff_limit = page_size if (page_size is not None and page_size >= 1) else limit
@@ -111,7 +111,7 @@ def get_domain_detail(
     window: Optional[str] = Query(None),
     start_time: Optional[str] = Query(None),
     end_time: Optional[str] = Query(None),
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("domains:read")),
 ) -> DomainDossier:
     """Thin adapter delegating to InvestigationService.get_domain_dossier."""
     _check_no_temporal_params(window, start_time, end_time)

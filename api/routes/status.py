@@ -14,7 +14,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from api.auth import get_current_user
+from api.rbac import require_permission
 from api.schemas import (
     AggregationStatus,
     DatabaseHealth,
@@ -71,7 +71,7 @@ def _get_aggregator_status() -> Optional[AggregationStatus]:
     summary="System and Pipeline Health Status",
     description="Reports authoritative PostgreSQL connectivity, aggregation watermark pointer, and pipeline state.",
 )
-def get_system_status(current_user: dict[str, Any] = Depends(get_current_user)) -> SystemStatusResponse:
+def get_system_status(current_user: dict[str, Any] = Depends(require_permission("status:read"))) -> SystemStatusResponse:
     """Authoritative backend status check."""
     connected, dbname, latency = _check_db_connectivity()
     if not connected:

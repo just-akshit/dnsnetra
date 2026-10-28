@@ -28,6 +28,9 @@ class UserStatus(str, Enum):
 # Authoritative role-to-permission mapping
 ROLE_PERMISSIONS: dict[str, Set[str]] = {
     UserRole.ADMIN.value: {
+        "dashboard:read",
+        "status:read",
+        "analytics:read",
         # User management (lifecycle operations: approve, enable, disable)
         "users:read",
         "users:create",
@@ -51,6 +54,9 @@ ROLE_PERMISSIONS: dict[str, Set[str]] = {
         "audit_logs:read",
     },
     UserRole.ANALYST.value: {
+        "dashboard:read",
+        "status:read",
+        "analytics:read",
         # Telemetry & Dossiers
         "domains:read",
         "domains:investigate",
@@ -66,6 +72,9 @@ ROLE_PERMISSIONS: dict[str, Set[str]] = {
         "reports:export",
     },
     UserRole.SUPPORT.value: {
+        "dashboard:read",
+        "status:read",
+        "analytics:read",
         # Read-only operational views
         "domains:read",
         "clients:read",

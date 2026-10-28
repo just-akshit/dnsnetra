@@ -14,7 +14,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from api.auth import get_current_user
+from api.rbac import require_permission
 from api.schemas import (
     ClientSummaryItem,
     PaginatedResponse,
@@ -59,7 +59,7 @@ def list_clients(
     window: Optional[str] = Query(None),
     start_time: Optional[str] = Query(None),
     end_time: Optional[str] = Query(None),
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("clients:read")),
 ) -> PaginatedResponse[ClientSummaryItem]:
     """Canonical client reporting with SQL-level search and sorting."""
     eff_limit = page_size if (page_size is not None and page_size >= 1) else limit
@@ -103,7 +103,7 @@ def get_client_detail(
     window: Optional[str] = Query(None),
     start_time: Optional[str] = Query(None),
     end_time: Optional[str] = Query(None),
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("clients:read")),
 ) -> ClientDossier:
     """Thin adapter delegating to InvestigationService.get_client_dossier."""
     _check_no_temporal_params(window, start_time, end_time)

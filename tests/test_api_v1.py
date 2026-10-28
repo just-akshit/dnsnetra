@@ -659,14 +659,14 @@ def test_daily_review_endpoints_and_mutations(auth_headers, analyst_headers, mon
         assert res_item.status_code == 200
         assert res_item.json()["domain"] == domain_name
 
-    # 4. Mutation: POST /verdict authorization checks
-    # Non-admin is rejected with 403 Forbidden (ADMIN-only until RBAC lands)
-    res_forbidden = client.post(
+    # 4. Mutation: POST /verdict — ANALYST holds daily_review:update
+    monkeypatch.setattr("api.routes.daily_review.promote_to_clean", lambda *args, **kwargs: None)
+    res_analyst = client.post(
         "/api/v1/daily-review/test-safe-domain.example.com/verdict",
         headers=analyst_headers,
-        json={"verdict": "clean", "reason": "Unauthorized test"},
+        json={"verdict": "clean", "reason": "Analyst review"},
     )
-    assert res_forbidden.status_code == 403
+    assert res_analyst.status_code == 200
 
     # Invalid verdict choice is rejected with 400
     res_invalid = client.post(
@@ -677,7 +677,6 @@ def test_daily_review_endpoints_and_mutations(auth_headers, analyst_headers, mon
     assert res_invalid.status_code == 400
 
     # Valid admin override with mocked promoter
-    monkeypatch.setattr("api.routes.daily_review.promote_to_clean", lambda *args, **kwargs: None)
     res_admin = client.post(
         "/api/v1/daily-review/test-safe-domain.example.com/verdict",
         headers=auth_headers,
@@ -686,19 +685,19 @@ def test_daily_review_endpoints_and_mutations(auth_headers, analyst_headers, mon
     assert res_admin.status_code == 200
     assert res_admin.json()["success"] is True
 
-    # 5. Mutation: POST /trigger authorization and TI isolation
-    # Non-admin is rejected with 403
-    res_trig_forbidden = client.post(
-        "/api/v1/daily-review/test-safe-domain.example.com/trigger",
-        headers=analyst_headers,
-    )
-    assert res_trig_forbidden.status_code == 403
-
-    # Admin trigger with mocked DailyReviewWorker (zero external live network calls)
+    # 5. Mutation: POST /trigger — ANALYST holds domains:investigate
     monkeypatch.setattr(
         "labeler.intel.daily_review.DailyReviewWorker.process_domain_investigation",
         lambda self, d: "CLEAN",
     )
+    res_trig_analyst = client.post(
+        "/api/v1/daily-review/test-safe-domain.example.com/trigger",
+        headers=analyst_headers,
+    )
+    assert res_trig_analyst.status_code == 200
+
+    # Admin trigger with mocked DailyReviewWorker (zero external live network calls)
+    # Admin trigger (mocked above)
     res_trig = client.post(
         "/api/v1/daily-review/test-safe-domain.example.com/trigger",
         headers=auth_headers,

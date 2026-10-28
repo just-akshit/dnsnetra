@@ -462,6 +462,10 @@ def test_rbac_permission_matrix():
     assert has_permission("SUPPORT", "clients:read") is True
     assert has_permission("SUPPORT", "users:read") is False
     assert has_permission("SUPPORT", "daily_review:update") is False
+    assert has_permission("SUPPORT", "dashboard:read") is True
+    assert has_permission("SUPPORT", "reports:export") is False
+    assert has_permission("ANALYST", "daily_review:update") is True
+    assert has_permission("ANALYST", "users:read") is False
 
 
 def test_unauthenticated_and_forbidden_requests():
@@ -491,7 +495,7 @@ def test_unauthenticated_and_forbidden_requests():
     # Analyst trying to access admin users endpoint -> 403 Forbidden
     forbidden_res = client.get("/api/v1/users", headers=analyst_headers)
     assert forbidden_res.status_code == 403
-    assert "administrator privileges" in forbidden_res.json()["detail"].lower()
+    assert "lacks permission" in forbidden_res.json()["detail"].lower()
 
 
 # ===========================================================================

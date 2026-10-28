@@ -54,6 +54,7 @@ from api.sessions import (
     revoke_session,
 )
 from labeler.intel.reputation.connection import get_connection
+from tests.auth_testkit import TEST_PASSWORD, login
 
 client = TestClient(app)
 
@@ -71,20 +72,10 @@ def clean_rate_limits_and_test_users():
 
 
 def get_captcha_with_known_answer() -> tuple[str, str]:
-    """Helper to generate a captcha and retrieve the answer from memory for testing."""
-    challenge = create_captcha(expires_in=300)
-    cid = str(challenge["captcha_id"])
-    # In test context, extract the actual answer or verify via internal signature map
-    # Since answer is normalized upper, we can resolve it by matching candidates or hooking
-    answer = None
-    sig, exp = _ISSUED_CHALLENGES[cid]
-    # Check all candidate strings: in create_captcha, it's 6 uppercase chars/digits
-    # For testing, we can insert a known test challenge directly
-    test_ans = "7K9P2X"
-    from api.captcha import _compute_challenge_signature
-    test_sig = _compute_challenge_signature(cid, test_ans, int(exp))
-    _ISSUED_CHALLENGES[cid] = (test_sig, exp)
-    return cid, test_ans
+    """Issue a challenge with a known answer in the active store."""
+    from tests.auth_testkit import issue_captcha
+
+    return issue_captcha()
 
 
 # ===========================================================================
@@ -338,13 +329,13 @@ def test_pending_user_cannot_login():
 # ===========================================================================
 
 def test_login_valid_with_admin():
-    """✓ Valid login against existing admin succeeds and issues session token."""
+    """✓ Valid login against the seeded admin succeeds and issues session token."""
     cid, ans = get_captcha_with_known_answer()
     res = client.post(
         "/api/v1/auth/login",
         json={
-            "username": "admin",
-            "password": "admin",
+            "username": "pytest_admin",
+            "password": TEST_PASSWORD,
             "captcha_id": cid,
             "captcha_answer": ans,
         },
@@ -354,7 +345,7 @@ def test_login_valid_with_admin():
     assert "session_token" in data
     assert "access_token" in data
     assert data["token_type"] == "bearer"
-    assert data["user"]["username"] == "admin"
+    assert data["user"]["username"] == "pytest_admin"
     assert data["user"]["role"] == "ADMIN"
     assert data["user"]["status"] == "ACTIVE"
 
@@ -365,7 +356,7 @@ def test_login_invalid_password_and_username():
     res1 = client.post(
         "/api/v1/auth/login",
         json={
-            "username": "admin",
+            "username": "pytest_admin",
             "password": "WrongPassword999!",
             "captcha_id": cid1,
             "captcha_answer": ans1,
@@ -390,23 +381,29 @@ def test_login_invalid_password_and_username():
 
 def test_login_rate_limiting():
     """✓ Login endpoint rate limiting throttles excessive attempts with 429."""
-    # Reset bucket
     reset_rate_limits()
-    # 15 requests allowed per minute in route definition
-    for i in range(15):
-        client.post(
-            "/api/v1/auth/login",
-            json={"username": f"user_{i}", "password": "badpassword"},
+    # CAPTCHA is mandatory, so every attempt needs its own fresh challenge.
+    responses = []
+    for _ in range(20):
+        cid, ans = get_captcha_with_known_answer()
+        responses.append(
+            client.post(
+                "/api/v1/auth/login",
+                json={
+                    "username": "rate_limited_user",
+                    "password": "WrongPassword123!",
+                    "captcha_id": cid,
+                    "captcha_answer": ans,
+                },
+            )
         )
 
-    # 16th request must trigger 429 Too Many Requests
-    blocked_res = client.post(
-        "/api/v1/auth/login",
-        json={"username": "user_blocked", "password": "badpassword"},
-    )
-    assert blocked_res.status_code == 429
-    assert "Too many requests" in blocked_res.json()["detail"]
-    assert "Retry-After" in blocked_res.headers
+    statuses = [r.status_code for r in responses]
+    assert 200 not in statuses
+    assert 429 in statuses
+    blocked = responses[statuses.index(429)]
+    assert "Too many requests" in blocked.json()["detail"]
+    assert "Retry-After" in blocked.headers
 
 
 # ===========================================================================
@@ -415,16 +412,7 @@ def test_login_rate_limiting():
 
 def test_session_lifecycle_and_logout():
     """✓ Full session lifecycle: creation, authenticated request, logout, invalidation."""
-    cid, ans = get_captcha_with_known_answer()
-    login_res = client.post(
-        "/api/v1/auth/login",
-        json={
-            "username": "admin",
-            "password": "admin",
-            "captcha_id": cid,
-            "captcha_answer": ans,
-        },
-    )
+    login_res = login(client, "pytest_admin")
     assert login_res.status_code == 200
     token = login_res.json()["session_token"]
 
@@ -433,7 +421,7 @@ def test_session_lifecycle_and_logout():
     # 1. Access protected /me
     me_res = client.get("/api/v1/auth/me", headers=headers)
     assert me_res.status_code == 200
-    assert me_res.json()["username"] == "admin"
+    assert me_res.json()["username"] == "pytest_admin"
 
     # 2. Perform logout
     logout_res = client.post("/api/v1/auth/logout", headers=headers)

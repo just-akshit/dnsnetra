@@ -40,6 +40,7 @@ from api.captcha import (
 from api.main import app
 from api.rate_limiter import reset_rate_limits
 from labeler.intel.reputation.connection import get_connection
+from tests.auth_testkit import issue_captcha
 
 PASSWORD = "AuditPass123!"
 
@@ -119,7 +120,13 @@ def admin_headers(mk_user):
 
 
 def _login_body(username: str, password: str = PASSWORD) -> dict:
-    return {"username": username, "password": password}
+    captcha_id, answer = issue_captcha()
+    return {
+        "username": username,
+        "password": password,
+        "captcha_id": captcha_id,
+        "captcha_answer": answer,
+    }
 
 
 def _client(**kw) -> TestClient:
@@ -195,18 +202,19 @@ def test_jwt_is_revoked_when_sessions_are_revoked(mk_user, monkeypatch):
 # AUTH-03: CAPTCHA is optional
 # ===========================================================================
 
-@pytest.mark.xfail(reason="AUTH-03: /auth/login verifies CAPTCHA only if fields are sent", strict=False)
 def test_login_requires_a_captcha(mk_user):
     username, _ = mk_user("nocaptcha")
-    res = _client().post("/api/v1/auth/login", json=_login_body(username))
-    assert res.status_code == 400
+    res = _client().post(
+        "/api/v1/auth/login",
+        json={"username": username, "password": PASSWORD},
+    )
+    assert res.status_code in (400, 422)
 
 
-@pytest.mark.xfail(reason="AUTH-03: /auth/token has no CAPTCHA at all", strict=False)
 def test_oauth2_form_login_requires_a_captcha(mk_user):
     username, _ = mk_user("tokennocaptcha")
     res = _client().post("/api/v1/auth/token", data={"username": username, "password": PASSWORD})
-    assert res.status_code == 400
+    assert res.status_code in (400, 422)
 
 
 # ===========================================================================
@@ -322,7 +330,6 @@ def test_expires_in_matches_configured_session_ttl(mk_user, monkeypatch):
 # AUTH-10: CAPTCHA single-use is not atomic; consume() result ignored
 # ===========================================================================
 
-@pytest.mark.xfail(reason="AUTH-10: verification ignores consume() failure (TOCTOU)", strict=False)
 def test_captcha_rejects_when_consume_fails():
     original_store = get_captcha_store()
 

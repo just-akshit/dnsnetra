@@ -17,7 +17,7 @@ import logging
 import os
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Form, Header, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
 
@@ -83,8 +83,8 @@ class LoginRequest(BaseModel):
     username: Optional[str] = Field(None, max_length=100)
     email: Optional[str] = Field(None, max_length=100)
     password: str = Field(..., min_length=1, max_length=128)
-    captcha_id: Optional[str] = Field(None, max_length=64)
-    captcha_answer: Optional[str] = Field(None, max_length=20)
+    captcha_id: str = Field(..., min_length=10, max_length=64)
+    captcha_answer: str = Field(..., min_length=1, max_length=20)
 
 
 class ChangePasswordRequest(BaseModel):
@@ -254,17 +254,16 @@ def login(payload: LoginRequest, request: Request, response: Response) -> TokenR
             detail="Username or email is required",
         )
 
-    # If CAPTCHA challenge is provided, verify and consume it
-    if payload.captcha_id or payload.captcha_answer:
-        captcha_valid, captcha_err = verify_and_consume_captcha(
-            captcha_id=payload.captcha_id,
-            user_answer=payload.captcha_answer,
+    # CAPTCHA is mandatory: verify and consume it before touching credentials
+    captcha_valid, captcha_err = verify_and_consume_captcha(
+        captcha_id=payload.captcha_id,
+        user_answer=payload.captcha_answer,
+    )
+    if not captcha_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"CAPTCHA verification failed: {captcha_err}",
         )
-        if not captcha_valid:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"CAPTCHA verification failed: {captcha_err}",
-            )
 
     # Authenticate credentials and verify ACTIVE status
     user = authenticate_user(identifier, payload.password)
@@ -342,9 +341,22 @@ def login_for_access_token(
     request: Request,
     response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
+    captcha_id: str = Form(..., min_length=10, max_length=64),
+    captcha_answer: str = Form(..., min_length=1, max_length=20),
 ) -> TokenResponse:
     """Canonical OAuth2 form password login."""
     client_ip, user_agent = _extract_client_metadata(request)
+
+    captcha_valid, captcha_err = verify_and_consume_captcha(
+        captcha_id=captcha_id,
+        user_answer=captcha_answer,
+    )
+    if not captcha_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"CAPTCHA verification failed: {captcha_err}",
+        )
+
     user = authenticate_user(form_data.username, form_data.password)
 
     if not user:

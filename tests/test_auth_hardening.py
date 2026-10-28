@@ -69,6 +69,7 @@ from api.sessions import (
     revoke_session,
 )
 from api.trusted_proxy import get_client_ip
+from tests.auth_testkit import TEST_PASSWORD, issue_captcha
 from labeler.intel.reputation.connection import get_connection
 
 client = TestClient(app)
@@ -83,6 +84,23 @@ def _get_captcha_for_test(answer: str = "SAFE99") -> tuple[str, str]:
     store = get_captcha_store()
     store.issue(cid, sig, expiry)
     return cid, answer
+
+
+def _login(username: str, password: str = TEST_PASSWORD, *, expect: int | None = 200):
+    """Log in with a freshly issued single-use CAPTCHA."""
+    captcha_id, answer = issue_captcha()
+    res = client.post(
+        "/api/v1/auth/login",
+        json={
+            "username": username,
+            "password": password,
+            "captcha_id": captcha_id,
+            "captcha_answer": answer,
+        },
+    )
+    if expect is not None:
+        assert res.status_code == expect, res.text
+    return res
 
 
 # ===========================================================================
@@ -250,10 +268,7 @@ def test_captcha_rate_limiting():
 def test_login_returns_httponly_samesite_cookie():
     """✓ Login issues HttpOnly, SameSite=lax dnsnetra_session cookie."""
     client.cookies.clear()
-    res = client.post(
-        "/api/v1/auth/login",
-        json={"username": "admin", "password": "admin"},
-    )
+    res = _login("pytest_admin")
     assert res.status_code == 200
     cookie_header = res.headers.get("set-cookie", "")
     assert "dnsnetra_session=" in cookie_header
@@ -269,10 +284,7 @@ def test_login_returns_httponly_samesite_cookie():
 def test_csrf_rejection_on_untrusted_origin():
     """✓ State-changing requests with cookie auth from untrusted origin are rejected (403)."""
     client.cookies.clear()
-    login_res = client.post(
-        "/api/v1/auth/login",
-        json={"username": "admin", "password": "admin"},
-    )
+    login_res = _login("pytest_admin")
     assert login_res.status_code == 200
     session_cookie = client.cookies.get("dnsnetra_session")
     assert session_cookie is not None
@@ -297,10 +309,7 @@ def test_csrf_rejection_on_untrusted_origin():
 
 def test_csrf_allowed_with_bearer_token_regardless_of_origin():
     """✓ Bearer token API requests bypass CSRF origin checks."""
-    login_res = client.post(
-        "/api/v1/auth/login",
-        json={"username": "admin", "password": "admin"},
-    )
+    login_res = _login("pytest_admin")
     token = login_res.json()["access_token"]
     client.cookies.clear()
 
@@ -322,10 +331,7 @@ def test_csrf_allowed_with_bearer_token_regardless_of_origin():
 def test_admin_cannot_demote_final_admin():
     """✓ Admin cannot demote themselves if they are the last active admin."""
     # Ensure admin user is the target
-    login_res = client.post(
-        "/api/v1/auth/login",
-        json={"username": "admin", "password": "admin"},
-    )
+    login_res = _login("pytest_admin")
     token = login_res.json()["access_token"]
     admin_id = login_res.json()["user"]["id"]
     headers = {"Authorization": f"Bearer {token}"}
@@ -342,10 +348,7 @@ def test_admin_cannot_demote_final_admin():
 
 def test_admin_cannot_disable_final_admin():
     """✓ Admin cannot disable themselves or the last active admin."""
-    login_res = client.post(
-        "/api/v1/auth/login",
-        json={"username": "admin", "password": "admin"},
-    )
+    login_res = _login("pytest_admin")
     token = login_res.json()["access_token"]
     admin_id = login_res.json()["user"]["id"]
     headers = {"Authorization": f"Bearer {token}"}
@@ -360,10 +363,7 @@ def test_admin_cannot_disable_final_admin():
 
 def test_two_admins_can_manage_each_other_safely():
     """✓ Two admins can manage each other, but the final remaining admin is protected."""
-    login_res = client.post(
-        "/api/v1/auth/login",
-        json={"username": "admin", "password": "admin"},
-    )
+    login_res = _login("pytest_admin")
     token = login_res.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -422,10 +422,7 @@ def test_pending_user_has_no_effective_permissions():
     )
 
     # Login fails with 401 Unauthorized
-    res_login = client.post(
-        "/api/v1/auth/login",
-        json={"username": base_user, "password": "Password123!"},
-    )
+    res_login = _login(base_user, "Password123!", expect=None)
     assert res_login.status_code == 401
     assert "incorrect username or password" in res_login.json()["detail"].lower()
 
@@ -483,10 +480,7 @@ def test_legacy_bcrypt_migration_clears_old_hash():
 def test_password_reset_and_must_change_password_flow():
     """✓ Password reset sets must_change_password and revokes all active sessions."""
     # 1. Admin login
-    login_res = client.post(
-        "/api/v1/auth/login",
-        json={"username": "admin", "password": "admin"},
-    )
+    login_res = _login("pytest_admin")
     admin_token = login_res.json()["access_token"]
     headers = {"Authorization": f"Bearer {admin_token}"}
 
@@ -501,10 +495,7 @@ def test_password_reset_and_must_change_password_flow():
 
     # 3. User logs in and creates a session
     client.cookies.clear()
-    res_user_login = client.post(
-        "/api/v1/auth/login",
-        json={"username": analyst_name, "password": "InitialPass123!"},
-    )
+    res_user_login = _login(analyst_name, "InitialPass123!")
     assert res_user_login.status_code == 200
     user_token = res_user_login.json()["access_token"]
 
@@ -521,10 +512,7 @@ def test_password_reset_and_must_change_password_flow():
     assert res_old_sess.status_code == 401
 
     # 6. User logs in with temporary password; must_change_password is True
-    res_new_login = client.post(
-        "/api/v1/auth/login",
-        json={"username": analyst_name, "password": "TempPassword999!"},
-    )
+    res_new_login = _login(analyst_name, "TempPassword999!")
     assert res_new_login.status_code == 200
     assert res_new_login.json()["user"]["must_change_password"] is True
     new_token = res_new_login.json()["access_token"]
@@ -557,10 +545,7 @@ def test_password_reset_and_must_change_password_flow():
 
 def test_session_token_stored_hashed_never_plaintext():
     """✓ Session tokens are stored as SHA-256 hashes in database."""
-    login_res = client.post(
-        "/api/v1/auth/login",
-        json={"username": "admin", "password": "admin"},
-    )
+    login_res = _login("pytest_admin")
     raw_token = login_res.json()["access_token"]
     expected_hash = hash_session_token(raw_token)
 
@@ -579,10 +564,7 @@ def test_session_token_stored_hashed_never_plaintext():
 
 def test_re_enabling_account_does_not_resurrect_sessions():
     """✓ Re-enabling a disabled account does NOT resurrect previously revoked sessions."""
-    login_res = client.post(
-        "/api/v1/auth/login",
-        json={"username": "admin", "password": "admin"},
-    )
+    login_res = _login("pytest_admin")
     admin_token = login_res.json()["access_token"]
     headers = {"Authorization": f"Bearer {admin_token}"}
 
@@ -597,10 +579,7 @@ def test_re_enabling_account_does_not_resurrect_sessions():
 
     # 2. User logs in
     client.cookies.clear()
-    u_login = client.post(
-        "/api/v1/auth/login",
-        json={"username": uname, "password": "Password123!"},
-    )
+    u_login = _login(uname, "Password123!")
     user_token = u_login.json()["access_token"]
 
     # 3. Admin disables user

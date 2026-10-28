@@ -37,6 +37,7 @@ from ..auth import (
     verify_password,
 )
 from ..captcha import create_captcha, verify_and_consume_captcha
+from ..auth_config import cookie_secure, get_captcha_ttl_seconds, get_session_ttl_seconds
 from ..rate_limiter import rate_limiter
 from ..sessions import create_session, revoke_session
 from ..trusted_proxy import get_client_ip
@@ -51,10 +52,7 @@ LEGACY_COOKIE_NAME = "session_token"
 
 def _is_cookie_secure() -> bool:
     """Determine whether cookies must have the Secure attribute."""
-    env = (os.getenv("DNSNETRA_ENV") or os.getenv("APP_ENV") or "development").lower()
-    if env in ("production", "prod"):
-        return True
-    return os.getenv("AUTH_COOKIE_SECURE", "false").lower() in ("true", "1")
+    return cookie_secure()
 
 
 # ---------------------------------------------------------------------------
@@ -122,7 +120,7 @@ def _extract_client_metadata(request: Request) -> tuple[str, Optional[str]]:
 )
 def get_captcha() -> CaptchaResponse:
     """Generate and return a self-hosted text/image CAPTCHA challenge."""
-    challenge = create_captcha(expires_in=300)
+    challenge = create_captcha(expires_in=get_captcha_ttl_seconds())
     return CaptchaResponse(
         captcha_id=str(challenge["captcha_id"]),
         image=str(challenge["image"]),
@@ -285,10 +283,12 @@ def login(payload: LoginRequest, request: Request, response: Response) -> TokenR
         )
 
     # Create server-side session
+    ttl_seconds = get_session_ttl_seconds()
     raw_session_token, expires_at = create_session(
         user_id=user["id"],
         ip_address=client_ip,
         user_agent=user_agent,
+        expire_minutes=ttl_seconds // 60,
     )
 
     # Set canonical HttpOnly browser session cookie
@@ -298,7 +298,7 @@ def login(payload: LoginRequest, request: Request, response: Response) -> TokenR
         httponly=True,
         secure=_is_cookie_secure(),
         samesite="lax",
-        max_age=86400,
+        max_age=ttl_seconds,
         path="/",
     )
 
@@ -315,7 +315,7 @@ def login(payload: LoginRequest, request: Request, response: Response) -> TokenR
         session_token=raw_session_token,
         access_token=raw_session_token,
         token_type="bearer",
-        expires_in=86400,
+        expires_in=ttl_seconds,
         user={
             "id": user["id"],
             "username": user["username"],
@@ -361,10 +361,12 @@ def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    ttl_seconds = get_session_ttl_seconds()
     raw_session_token, _ = create_session(
         user_id=user["id"],
         ip_address=client_ip,
         user_agent=user_agent,
+        expire_minutes=ttl_seconds // 60,
     )
 
     response.set_cookie(
@@ -373,7 +375,7 @@ def login_for_access_token(
         httponly=True,
         secure=_is_cookie_secure(),
         samesite="lax",
-        max_age=86400,
+        max_age=ttl_seconds,
         path="/",
     )
 
@@ -389,7 +391,7 @@ def login_for_access_token(
         session_token=raw_session_token,
         access_token=raw_session_token,
         token_type="bearer",
-        expires_in=86400,
+        expires_in=ttl_seconds,
         user={
             "id": user["id"],
             "username": user["username"],
@@ -451,10 +453,12 @@ def user_change_password(
     change_user_password(current_user["id"], payload.new_password)
 
     # Create fresh session for caller
+    ttl_seconds = get_session_ttl_seconds()
     new_session_token, _ = create_session(
         user_id=current_user["id"],
         ip_address=client_ip,
         user_agent=user_agent,
+        expire_minutes=ttl_seconds // 60,
     )
 
     response.set_cookie(
@@ -463,7 +467,7 @@ def user_change_password(
         httponly=True,
         secure=_is_cookie_secure(),
         samesite="lax",
-        max_age=86400,
+        max_age=ttl_seconds,
         path="/",
     )
 

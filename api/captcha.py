@@ -24,7 +24,8 @@ from typing import Optional, Tuple
 
 from PIL import Image, ImageDraw, ImageFont
 
-CAPTCHA_SECRET_DEFAULT = "dnsnetra-dev-test-captcha-secret-key-do-not-use-in-production"
+from . import auth_config
+
 CAPTCHA_EXPIRY_SECONDS_DEFAULT = 300  # 5 minutes
 
 # Unambiguous characters (avoiding 0/O, 1/I/l)
@@ -33,9 +34,8 @@ CAPTCHA_LENGTH = 6
 
 
 def get_captcha_secret() -> bytes:
-    """Retrieve CAPTCHA signing secret from environment."""
-    secret = os.getenv("AUTH_CAPTCHA_SECRET") or os.getenv("CAPTCHA_SECRET") or CAPTCHA_SECRET_DEFAULT
-    return secret.encode("utf-8")
+    """Retrieve the CAPTCHA signing secret; raises in production when unset."""
+    return auth_config.get_captcha_secret().encode("utf-8")
 
 
 def normalize_captcha_answer(raw: Optional[str]) -> str:

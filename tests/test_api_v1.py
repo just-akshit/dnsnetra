@@ -111,7 +111,7 @@ def test_auth_token_success():
     data = res.json()
     assert "access_token" in data
     assert data["token_type"] == "bearer"
-    assert data["expires_in"] == 86400
+    assert data["expires_in"] > 0
 
 
 def test_auth_token_invalid_password():

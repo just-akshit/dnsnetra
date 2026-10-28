@@ -29,7 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from api.auth import get_jwt_secret_key
+from api.auth_config import validate_auth_config
 from api.routes.analytics import router as analytics_router
 from api.routes.auth import router as auth_router
 from api.routes.clients import router as clients_router
@@ -54,12 +54,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger("api_main")
 
+validate_auth_config()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Validate startup environment invariants."""
-    # Ensure production configuration fails immediately if secret is insecure
-    get_jwt_secret_key()
+    # Ensure production configuration fails immediately if secrets are absent or insecure
+    validate_auth_config()
     logger.info("DNSNetra API initialized successfully.")
     yield
 

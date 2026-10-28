@@ -21,16 +21,16 @@ DEFAULT_ALLOWED_ORIGINS = {
     "http://127.0.0.1:3000",
     "http://localhost:8000",
     "http://127.0.0.1:8000",
+    "http://localhost:8001",
+    "http://127.0.0.1:8001",
 }
 
 
 def get_allowed_origins() -> Set[str]:
-    """Retrieve set of allowed web origins for CORS and CSRF validation."""
+    """Return the configured origins; localhost defaults only when nothing is configured."""
     raw = os.getenv("CORS_ALLOWED_ORIGINS") or os.getenv("ALLOWED_ORIGINS") or ""
     if raw.strip():
-        configured = {o.strip() for o in raw.split(",") if o.strip()}
-        configured.update(DEFAULT_ALLOWED_ORIGINS)
-        return configured
+        return {o.strip() for o in raw.split(",") if o.strip()}
     return set(DEFAULT_ALLOWED_ORIGINS)
 
 

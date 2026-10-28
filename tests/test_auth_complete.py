@@ -65,15 +65,10 @@ client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def clean_rate_limits_and_test_users():
-    """Ensure rate limits are reset and clean up ephemeral test users."""
+    """Reset rate limits; conftest deletes every known test-user prefix."""
     reset_rate_limits()
     yield
     reset_rate_limits()
-    # Cleanup test users created with prefix test_
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("DELETE FROM dashboard_users WHERE username LIKE 'test_%';")
-            conn.commit()
 
 
 def get_captcha_with_known_answer() -> tuple[str, str]:

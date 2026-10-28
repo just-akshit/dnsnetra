@@ -114,7 +114,7 @@ def test_case_insensitive_username_normalization():
     assert normalize_username("akshit") == "akshit"
 
 
-def test_case_insensitive_username_signup_conflict():
+def test_case_insensitive_username_signup_conflict(signup_enabled):
     """✓ Case variations (Akshit, akshit, AKSHIT) cannot create duplicate accounts."""
     reset_rate_limits()
     base_user = f"case_test_{uuid.uuid4().hex[:6]}"
@@ -406,7 +406,7 @@ def test_users_delete_permission_removed():
 # 8. PENDING User Role Semantics
 # ===========================================================================
 
-def test_pending_user_has_no_effective_permissions():
+def test_pending_user_has_no_effective_permissions(signup_enabled):
     """✓ PENDING users cannot login, cannot create sessions, and have no effective permissions."""
     base_user = f"pending_{uuid.uuid4().hex[:6]}"
     cid, ans = _get_captcha_for_test()

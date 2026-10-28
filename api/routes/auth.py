@@ -37,7 +37,7 @@ from ..auth import (
     verify_password,
 )
 from ..captcha import create_captcha, verify_and_consume_captcha
-from ..auth_config import cookie_secure, get_captcha_ttl_seconds, get_session_ttl_seconds
+from ..auth_config import cookie_secure, get_captcha_ttl_seconds, get_session_ttl_seconds, signup_enabled
 from ..rate_limiter import rate_limiter
 from ..sessions import create_session, revoke_session
 from ..trusted_proxy import get_client_ip
@@ -142,6 +142,12 @@ def get_captcha() -> CaptchaResponse:
 )
 def signup(payload: SignupRequest, request: Request) -> SignupResponse:
     """Handle new user self-service signup."""
+    if not signup_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Self-service registration is disabled. Ask an administrator to create your account.",
+        )
+
     client_ip, user_agent = _extract_client_metadata(request)
 
     # 1. Password confirmation check

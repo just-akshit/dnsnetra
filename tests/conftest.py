@@ -29,6 +29,12 @@ EPHEMERAL_PREFIXES = [
 ]
 
 
+@pytest.fixture
+def signup_enabled(monkeypatch):
+    """Legacy signup tests opt in explicitly; production defaults to closed."""
+    monkeypatch.setenv("AUTH_ALLOW_SIGNUP", "true")
+
+
 @pytest.fixture(autouse=True)
 def _reset_rate_limits():
     reset_rate_limits()

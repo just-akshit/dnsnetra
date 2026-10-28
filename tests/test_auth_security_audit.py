@@ -407,6 +407,26 @@ def test_login_does_not_return_raw_session_token_in_body(mk_user):
 
 
 # ===========================================================================
+# Public signup must be closed by default
+# ===========================================================================
+
+def test_public_signup_is_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("AUTH_ALLOW_SIGNUP", raising=False)
+    captcha_id, answer = issue_captcha()
+    res = _client().post(
+        "/api/v1/auth/signup",
+        json={
+            "username": "audit_signup",
+            "password": "Password123!",
+            "confirm_password": "Password123!",
+            "captcha_id": captcha_id,
+            "captcha_answer": answer,
+        },
+    )
+    assert res.status_code == 403
+
+
+# ===========================================================================
 # AUTH-17: password / username policy inconsistencies
 # ===========================================================================
 

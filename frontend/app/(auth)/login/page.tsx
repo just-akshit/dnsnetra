@@ -11,7 +11,6 @@ import { PasswordField } from "@/components/auth/PasswordField"
 import { CaptchaField } from "@/components/auth/CaptchaField"
 import { AuthButton } from "@/components/auth/AuthButton"
 import { AuthError } from "@/components/auth/AuthError"
-import { AuthFooter } from "@/components/auth/AuthFooter"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -68,7 +67,9 @@ export default function LoginPage() {
         <AuthError message={error} />
         <AuthButton pending={pending} idle="Sign in" busy="Signing in..." />
       </AuthForm>
-      <AuthFooter prompt="Don't have an account?" label="Create account" href="/signup" />
+      <p className="text-center text-sm text-[var(--auth-muted)]">
+        Forgotten your password? Ask your administrator to reset it.
+      </p>
     </AuthLayout>
   )
 }

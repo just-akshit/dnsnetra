@@ -159,7 +159,7 @@ def test_captcha_random_variation():
 # 2. Signup Test Suite
 # ===========================================================================
 
-def test_signup_valid():
+def test_signup_valid(signup_enabled):
     """✓ Valid signup creates an account in PENDING status and is_active=false."""
     cid, ans = get_captcha_with_known_answer()
     payload = {
@@ -184,7 +184,7 @@ def test_signup_valid():
     assert user["password_hash"].startswith("$argon2")
 
 
-def test_signup_duplicate_username():
+def test_signup_duplicate_username(signup_enabled):
     """✓ Signup rejects duplicate username with 409 Conflict."""
     cid1, ans1 = get_captcha_with_known_answer()
     client.post(
@@ -213,7 +213,7 @@ def test_signup_duplicate_username():
     assert "already taken" in res.json()["detail"]
 
 
-def test_signup_invalid_username():
+def test_signup_invalid_username(signup_enabled):
     """✓ Signup rejects invalid characters or short usernames."""
     cid, ans = get_captcha_with_known_answer()
     res = client.post(
@@ -229,7 +229,7 @@ def test_signup_invalid_username():
     assert res.status_code in (400, 422)
 
 
-def test_signup_weak_password_and_mismatch():
+def test_signup_weak_password_and_mismatch(signup_enabled):
     """✓ Signup rejects weak password and password mismatch."""
     cid1, ans1 = get_captcha_with_known_answer()
     res_mismatch = client.post(
@@ -259,7 +259,7 @@ def test_signup_weak_password_and_mismatch():
     assert res_weak.status_code == 400
 
 
-def test_signup_wrong_and_expired_captcha():
+def test_signup_wrong_and_expired_captcha(signup_enabled):
     """✓ Signup rejects wrong or expired CAPTCHA challenge."""
     cid, _ = get_captcha_with_known_answer()
     res = client.post(
@@ -276,7 +276,7 @@ def test_signup_wrong_and_expired_captcha():
     assert "CAPTCHA verification failed" in res.json()["detail"]
 
 
-def test_signup_admin_role_injection_prevention():
+def test_signup_admin_role_injection_prevention(signup_enabled):
     """✓ Signup ignores or forbids client-provided role (cannot create Admin)."""
     cid, ans = get_captcha_with_known_answer()
     payload = {

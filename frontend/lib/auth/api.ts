@@ -114,14 +114,6 @@ export const authApi = {
     captcha_answer: string
   }) => post<{ user: AuthUser }>("/login", b),
 
-  signup: (b: {
-    username: string
-    password: string
-    confirm_password: string
-    captcha_id: string
-    captcha_answer: string
-  }) => post<{ message: string; username: string; status: string }>("/signup", b),
-
   logout: () => post<unknown>("/logout", {}),
 
   changePassword: (b: {

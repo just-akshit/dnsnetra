@@ -264,23 +264,30 @@ def test_approve_cannot_grant_admin_role(mk_user, admin_headers):
 # AUTH-08: update_user invariants
 # ===========================================================================
 
-@pytest.mark.xfail(reason="AUTH-08: contradictory status/is_active leaks a DB constraint as HTTP 500", strict=False)
 def test_contradictory_status_update_returns_4xx(mk_user, admin_headers):
     _, uid = mk_user("contradict")
-    res = _client().patch(
-        f"/api/v1/users/{uid}", json={"status": "ACTIVE", "is_active": False}, headers=admin_headers
-    )
-    assert res.status_code in (400, 422)
+    client = _client()
+    assert client.patch(
+        f"/api/v1/users/{uid}",
+        json={"status": "ACTIVE", "is_active": False},
+        headers=admin_headers,
+    ).status_code == 400
+    assert client.patch(
+        f"/api/v1/users/{uid}",
+        json={"status": "DISABLED", "is_active": True},
+        headers=admin_headers,
+    ).status_code == 400
 
 
-@pytest.mark.xfail(reason="AUTH-08: no-op role update revokes all live sessions", strict=False)
 def test_noop_update_does_not_revoke_sessions(mk_user, admin_headers):
     username, uid = mk_user("noop", role="ANALYST")
     client = _client()
     client.post("/api/v1/auth/login", json=_login_body(username))
-    token = session_token_from_client(client)
-    client.patch(f"/api/v1/users/{uid}", json={"role": "ANALYST"}, headers=admin_headers)
-    res = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    raw = session_token_from_client(client)
+    assert client.patch(
+        f"/api/v1/users/{uid}", json={"role": "ANALYST"}, headers=admin_headers
+    ).status_code == 200
+    res = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {raw}"})
     assert res.status_code == 200
 
 

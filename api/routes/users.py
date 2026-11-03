@@ -361,34 +361,47 @@ def update_user(
                 detail="Administrators cannot disable their own account",
             )
 
+    target_role = target_user["role"]
+    target_status = target_user["status"]
+    target_active = target_user["is_active"]
+
+    new_role = payload.role
+    new_status = payload.status
+    new_active = payload.is_active
+
+    if new_status is not None and new_active is not None:
+        if new_active != (new_status == UserStatus.ACTIVE):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="status and is_active must agree",
+            )
+
+    if new_status is None and new_active is not None:
+        new_status = UserStatus.ACTIVE if new_active else UserStatus.DISABLED
+    if new_active is None and new_status is not None:
+        new_active = new_status == UserStatus.ACTIVE
+
+    role_changed = new_role is not None and new_role.value != target_role
+    status_changed = (
+        new_status is not None
+        and (new_status.value != target_status or new_active != target_active)
+    )
+
+    if not role_changed and not status_changed:
+        return UserDetail(**target_user)
+
+    will_demote = role_changed and new_role != UserRole.ADMIN
+    will_deactivate = status_changed and new_status != UserStatus.ACTIVE
+
     updates = []
     params: list[Any] = []
-
-    # Check if role demotion or deactivation
-    will_demote = payload.role is not None and payload.role != UserRole.ADMIN
-    will_deactivate = (payload.status is not None and payload.status != UserStatus.ACTIVE) or payload.is_active is False
-
-    if payload.role is not None:
+    if role_changed:
         updates.append("role = %s")
-        params.append(payload.role.value)
-
-    if payload.status is not None:
+        params.append(new_role.value)
+    if status_changed:
         updates.append("status = %s")
-        params.append(payload.status.value)
-        # Synchronize is_active flag to maintain database invariant
-        if payload.is_active is None:
-            updates.append("is_active = %s")
-            params.append(payload.status == UserStatus.ACTIVE)
-
-    if payload.is_active is not None:
         updates.append("is_active = %s")
-        params.append(payload.is_active)
-        if payload.status is None:
-            updates.append("status = %s")
-            params.append(UserStatus.ACTIVE.value if payload.is_active else UserStatus.DISABLED.value)
-
-    if not updates:
-        return UserDetail(**target_user)
+        params.extend([new_status.value, new_active])
 
     updates.append("updated_at = NOW()")
     params.append(user_id)

@@ -9,6 +9,7 @@ from __future__ import annotations
 import pytest
 
 from api.auth import hash_password
+from api.login_throttle import reset_all
 from api.rate_limiter import reset_rate_limits
 from api.sessions import create_session, revoke_session
 from tests.auth_testkit import TEST_PASSWORD, db
@@ -38,8 +39,10 @@ def signup_enabled(monkeypatch):
 @pytest.fixture(autouse=True)
 def _reset_rate_limits():
     reset_rate_limits()
+    reset_all()
     yield
     reset_rate_limits()
+    reset_all()
 
 
 @pytest.fixture(autouse=True)

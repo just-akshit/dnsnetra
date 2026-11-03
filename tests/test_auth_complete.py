@@ -403,7 +403,7 @@ def test_login_rate_limiting():
     assert 200 not in statuses
     assert 429 in statuses
     blocked = responses[statuses.index(429)]
-    assert "Too many requests" in blocked.json()["detail"]
+    assert "Too many" in blocked.json()["detail"]
     assert "Retry-After" in blocked.headers
 
 

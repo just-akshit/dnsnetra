@@ -4,9 +4,9 @@ tests/test_auth_security_audit.py
 Independent security audit of the authentication / authorization module.
 
 Every test in this file encodes the behaviour the module *should* have.
-Tests marked ``xfail`` reproduce a confirmed defect (AUTH-xx) and currently
-fail; they turn green automatically once the defect is fixed (remove the
-marker then). Tests that are not marked protect behaviour that already works.
+All previously deferred defects (AUTH-08, AUTH-12, AUTH-14, AUTH-15, AUTH-17)
+are fixed, so this module contains no expected-failure markers. Any failure
+here is a real regression.
 
 Run:
     pytest tests/test_auth_security_audit.py -rxX
@@ -303,6 +303,51 @@ def test_rate_limit_cannot_be_bypassed_with_spoofed_xff(monkeypatch):
             "/api/v1/auth/captcha", headers={"X-Forwarded-For": f"203.0.113.{i}"}
         ).status_code
         for i in range(35)  # limit is 30/min
+    ]
+    assert 429 in codes
+
+
+# ===========================================================================
+# AUTH-16 (partial): per-account lockout and change-password limits
+# ===========================================================================
+
+def test_five_failed_logins_lock_the_account(mk_user):
+    username, _ = mk_user("lockme")
+    client = _client()
+    for _ in range(5):
+        res = client.post("/api/v1/auth/login", json=_login_body(username, "WrongPass123!"))
+        assert res.status_code == 401
+    blocked = client.post("/api/v1/auth/login", json=_login_body(username))
+    assert blocked.status_code == 429
+    assert "Retry-After" in blocked.headers
+
+
+def test_successful_login_resets_the_failure_counter(mk_user):
+    username, _ = mk_user("resetme")
+    client = _client()
+    for _ in range(4):
+        assert client.post(
+            "/api/v1/auth/login", json=_login_body(username, "WrongPass123!")
+        ).status_code == 401
+    assert client.post("/api/v1/auth/login", json=_login_body(username)).status_code == 200
+    for _ in range(4):
+        assert client.post(
+            "/api/v1/auth/login", json=_login_body(username, "WrongPass123!")
+        ).status_code == 401
+
+
+def test_change_password_is_rate_limited(analyst_headers):
+    codes = [
+        _client().post(
+            "/api/v1/auth/change-password",
+            json={
+                "current_password": "wrong",
+                "new_password": "NewPass123!",
+                "confirm_password": "NewPass123!",
+            },
+            headers=analyst_headers,
+        ).status_code
+        for _ in range(12)
     ]
     assert 429 in codes
 

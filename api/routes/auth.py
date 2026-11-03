@@ -38,7 +38,12 @@ from ..auth import (
 )
 from ..captcha import create_captcha, verify_and_consume_captcha
 from ..auth_config import cookie_secure, get_captcha_ttl_seconds, get_session_ttl_seconds, signup_enabled
-from ..rate_limiter import rate_limiter
+from ..login_throttle import (
+    is_locked,
+    record_failure,
+    reset as reset_login_failures,
+)
+from ..rate_limiter import check_rate_limit, rate_limiter
 from ..sessions import create_session, revoke_session
 from ..trusted_proxy import get_client_ip
 
@@ -259,6 +264,14 @@ def login(payload: LoginRequest, request: Request, response: Response) -> TokenR
             detail="Username or email is required",
         )
 
+    locked, retry_after = is_locked(identifier)
+    if locked:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts. Please retry later.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
     # CAPTCHA is mandatory: verify and consume it before touching credentials
     captcha_valid, captcha_err = verify_and_consume_captcha(
         captcha_id=payload.captcha_id,
@@ -273,6 +286,7 @@ def login(payload: LoginRequest, request: Request, response: Response) -> TokenR
     # Authenticate credentials and verify ACTIVE status
     user = authenticate_user(identifier, payload.password)
     if not user:
+        record_failure(identifier)
         log_audit_event(
             action=AuditAction.LOGIN_FAILURE,
             user_id=None,
@@ -285,6 +299,8 @@ def login(payload: LoginRequest, request: Request, response: Response) -> TokenR
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    reset_login_failures(identifier)
 
     # Create server-side session
     ttl_seconds = get_session_ttl_seconds()
@@ -350,6 +366,14 @@ def login_for_access_token(
     """Canonical OAuth2 form password login."""
     client_ip, user_agent = _extract_client_metadata(request)
 
+    locked, retry_after = is_locked(form_data.username)
+    if locked:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts. Please retry later.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
     captcha_valid, captcha_err = verify_and_consume_captcha(
         captcha_id=captcha_id,
         user_answer=captcha_answer,
@@ -363,6 +387,7 @@ def login_for_access_token(
     user = authenticate_user(form_data.username, form_data.password)
 
     if not user:
+        record_failure(form_data.username)
         log_audit_event(
             action=AuditAction.LOGIN_FAILURE,
             user_id=None,
@@ -375,6 +400,8 @@ def login_for_access_token(
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    reset_login_failures(form_data.username)
 
     ttl_seconds = get_session_ttl_seconds()
     raw_session_token, _ = create_session(
@@ -425,6 +452,7 @@ def login_for_access_token(
     response_model=ChangePasswordResponse,
     summary="Change user password",
     description="Allows authenticated user to update their password. Clears must_change_password flag and issues new session.",
+    dependencies=[Depends(rate_limiter(action="change_password", max_requests=10, window_seconds=60))],
 )
 def user_change_password(
     payload: ChangePasswordRequest,
@@ -434,6 +462,19 @@ def user_change_password(
 ) -> ChangePasswordResponse:
     """Handle user password change."""
     client_ip, user_agent = _extract_client_metadata(request)
+
+    allowed, retry_after = check_rate_limit(
+        key=current_user["username"],
+        action="change_password_user",
+        max_requests=5,
+        window_seconds=60,
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many password change attempts.",
+            headers={"Retry-After": str(retry_after)},
+        )
 
     # Verify confirmation match
     if payload.new_password != payload.confirm_password:

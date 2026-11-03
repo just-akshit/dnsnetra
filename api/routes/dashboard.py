@@ -12,7 +12,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Query
 
-from api.auth import get_current_user
+from api.rbac import require_permission
 from api.schemas import (
     CanonicalVerdict,
     DailyReviewSummaryItem,
@@ -124,7 +124,7 @@ def get_dashboard(
     start_time: Optional[str] = Query(None, description="ISO-8601 start timestamp"),
     end_time: Optional[str] = Query(None, description="ISO-8601 end timestamp"),
     bucket: Optional[str] = Query(None, description="Explicit bucket size (e.g. 5m, 1h, 1d, 1w)"),
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("dashboard:read")),
 ) -> DashboardResponse:
     """Controlled dashboard composition endpoint."""
     reporting_service = ReportingService()

@@ -17,6 +17,7 @@ import io
 import math
 import os
 import random
+import secrets
 import threading
 import time
 import uuid
@@ -24,7 +25,8 @@ from typing import Optional, Tuple
 
 from PIL import Image, ImageDraw, ImageFont
 
-CAPTCHA_SECRET_DEFAULT = "dnsnetra-dev-test-captcha-secret-key-do-not-use-in-production"
+from . import auth_config
+
 CAPTCHA_EXPIRY_SECONDS_DEFAULT = 300  # 5 minutes
 
 # Unambiguous characters (avoiding 0/O, 1/I/l)
@@ -33,9 +35,8 @@ CAPTCHA_LENGTH = 6
 
 
 def get_captcha_secret() -> bytes:
-    """Retrieve CAPTCHA signing secret from environment."""
-    secret = os.getenv("AUTH_CAPTCHA_SECRET") or os.getenv("CAPTCHA_SECRET") or CAPTCHA_SECRET_DEFAULT
-    return secret.encode("utf-8")
+    """Retrieve the CAPTCHA signing secret; raises in production when unset."""
+    return auth_config.get_captcha_secret().encode("utf-8")
 
 
 def normalize_captcha_answer(raw: Optional[str]) -> str:
@@ -117,7 +118,7 @@ class InMemoryCaptchaStore(BaseCaptchaStore):
 
     def consume(self, challenge_id: str, expiry: float) -> bool:
         with self._lock:
-            if challenge_id in self._consumed:
+            if challenge_id in self._consumed or challenge_id not in self._issued:
                 return False
             self._issued.pop(challenge_id, None)
             self._consumed[challenge_id] = expiry
@@ -258,7 +259,7 @@ def create_captcha(expires_in: int = CAPTCHA_EXPIRY_SECONDS_DEFAULT) -> dict[str
     store = get_captcha_store()
 
     # Generate random text and normalize once
-    answer = "".join(random.choice(CAPTCHA_CHARACTERS) for _ in range(CAPTCHA_LENGTH))
+    answer = "".join(secrets.choice(CAPTCHA_CHARACTERS) for _ in range(CAPTCHA_LENGTH))
     normalized_answer = normalize_captcha_answer(answer)
 
     captcha_id = str(uuid.uuid4())
@@ -324,9 +325,12 @@ def verify_and_consume_captcha(captcha_id: Optional[str], user_answer: Optional[
     computed_sig = compute_challenge_signature(captcha_id, normalized_answer, int(expiry))
 
     if not hmac.compare_digest(expected_sig, computed_sig):
+        store.consume(captcha_id, expiry)
         return False, "Incorrect CAPTCHA answer"
 
-    # 5. Consume challenge atomically (single use guaranteed)
-    store.consume(captcha_id, expiry)
+    # 5. Consume challenge atomically (single use guaranteed); a failed consume
+    #    means a racing request already used it, so the caller must not proceed.
+    if not store.consume(captcha_id, expiry):
+        return False, "CAPTCHA challenge has already been used"
 
     return True, "OK"

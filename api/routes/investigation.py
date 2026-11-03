@@ -13,7 +13,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from api.auth import get_current_user
+from api.rbac import require_permission
 from investigation.schemas import (
     ClientDossier,
     DomainDossier,
@@ -51,7 +51,7 @@ def investigate_domain(
     window: Optional[str] = Query(None),
     start_time: Optional[str] = Query(None),
     end_time: Optional[str] = Query(None),
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("domains:investigate")),
 ) -> DomainDossier:
     """Canonical domain investigation endpoint."""
     _check_no_temporal_params(window, start_time, end_time)
@@ -77,7 +77,7 @@ def investigate_domain_alias(
     window: Optional[str] = Query(None),
     start_time: Optional[str] = Query(None),
     end_time: Optional[str] = Query(None),
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("domains:investigate")),
 ) -> DomainDossier:
     """Singular routing alias delegating to canonical domain investigation."""
     return investigate_domain(domain, window, start_time, end_time, current_user)
@@ -98,7 +98,7 @@ def investigate_client(
     window: Optional[str] = Query(None),
     start_time: Optional[str] = Query(None),
     end_time: Optional[str] = Query(None),
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("clients:investigate")),
 ) -> ClientDossier:
     """Canonical client investigation endpoint."""
     _check_no_temporal_params(window, start_time, end_time)
@@ -124,7 +124,7 @@ def investigate_client_alias(
     window: Optional[str] = Query(None),
     start_time: Optional[str] = Query(None),
     end_time: Optional[str] = Query(None),
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("clients:investigate")),
 ) -> ClientDossier:
     """Singular routing alias delegating to canonical client investigation."""
     return investigate_client(client_ip, window, start_time, end_time, current_user)

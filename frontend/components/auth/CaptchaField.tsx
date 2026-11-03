@@ -16,14 +16,16 @@ export function CaptchaField({
   const { challenge, loading, failed, answer, setAnswer, refresh } = captcha
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-sm font-medium text-[var(--auth-ink)]">CAPTCHA</span>
-      <div className="flex items-stretch gap-2">
-        <div className="flex h-[4.5rem] flex-1 items-center justify-center overflow-hidden rounded-[var(--auth-radius)] border border-[var(--auth-line)] bg-white">
+      <label htmlFor="captcha-answer" className="text-sm font-medium text-[var(--auth-ink)]">
+        Verification
+      </label>
+      <div className="flex items-stretch gap-2 h-14">
+        <div className="flex h-full flex-1 items-center justify-center overflow-hidden rounded-[var(--auth-radius)] border border-[var(--auth-line)] bg-white p-1">
           {challenge && !loading ? (
-            <img src={challenge.image} alt="CAPTCHA: type the characters shown" className="h-full w-full object-contain" />
+            <img src={challenge.image} alt="Verification: type the characters shown" className="h-full w-full object-contain" />
           ) : (
             <span className="text-[0.8125rem] text-[var(--auth-muted)]" role="status">
-              {failed ? "Couldn't load CAPTCHA" : "Loading..."}
+              {failed ? "Couldn't load verification" : "Loading..."}
             </span>
           )}
         </div>
@@ -31,8 +33,9 @@ export function CaptchaField({
           type="button"
           onClick={refresh}
           disabled={loading || disabled}
-          aria-label="Get a new CAPTCHA"
-          className="flex w-11 items-center justify-center rounded-[var(--auth-radius)] border border-[var(--auth-line)] bg-white text-[var(--auth-muted)] transition-colors hover:text-[var(--auth-ink)] disabled:opacity-50"
+          aria-label="Request a new verification code"
+          title="Get a new verification challenge"
+          className="flex h-full w-14 shrink-0 aspect-square items-center justify-center rounded-[var(--auth-radius)] border border-[var(--auth-line)] bg-white text-[var(--auth-muted)] transition-colors hover:text-[var(--auth-ink)] hover:border-[var(--auth-ink)]/30 disabled:opacity-50 cursor-pointer"
         >
           <RefreshCwIcon className="size-4" />
         </button>
@@ -46,12 +49,12 @@ export function CaptchaField({
           name="captcha-answer"
           value={answer}
           onChange={(e) => setAnswer(e.target.value)}
-          placeholder="Enter the characters shown"
+          placeholder={failed ? "Verification unavailable" : loading ? "Loading verification..." : "Enter the characters shown"}
           autoComplete="off"
           autoCapitalize="none"
           spellCheck={false}
           maxLength={20}
-          disabled={disabled}
+          disabled={disabled || loading || !challenge}
           aria-invalid={!!error}
           aria-describedby={describedBy("captcha-answer", undefined, error)}
           className={authInput}

@@ -1,0 +1,26 @@
+[Unit]
+Description=DNSNetra API (FastAPI)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dnsnetra
+Group=dnsnetra
+WorkingDirectory=/opt/dnsnetra
+EnvironmentFile=/etc/dnsnetra/api.env
+ExecStart=/opt/dnsnetra/.venv/bin/uvicorn api.main:app --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/dnsnetra/logs
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

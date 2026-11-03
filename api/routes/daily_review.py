@@ -25,7 +25,7 @@ from labeler.intel.daily_review import (
 )
 from labeler.intel.database import normalize_domain
 from labeler.intel.reputation import get_domain as get_reputation_domain
-from ..auth import get_current_user, require_admin
+from ..rbac import require_permission
 
 logger = logging.getLogger("api_daily_review")
 
@@ -86,7 +86,7 @@ def list_domains(
     offset: int = Query(0, ge=0),
     page: Optional[int] = Query(None, ge=1, description="Legacy page number alias"),
     page_size: Optional[int] = Query(None, ge=1, le=500, description="Legacy page size alias"),
-    user: dict[str, Any] = Depends(get_current_user),
+    user: dict[str, Any] = Depends(require_permission("daily_review:read")),
 ):
     """List domains in the daily review system with filtering and canonical pagination."""
     eff_limit = page_size if (page_size is not None and page_size >= 1) else limit
@@ -141,7 +141,7 @@ def list_domains(
 
 
 @router.get("/stats", response_model=DailyReviewStatsResponse)
-def get_stats(user: dict[str, Any] = Depends(get_current_user)):
+def get_stats(user: dict[str, Any] = Depends(require_permission("daily_review:read"))):
     """Retrieve operational statistics of the daily review queue."""
     stats = get_daily_review_stats()
     return DailyReviewStatsResponse(
@@ -155,7 +155,7 @@ def get_stats(user: dict[str, Any] = Depends(get_current_user)):
 
 
 @router.get("/{domain}", response_model=DomainDossierResponse)
-def get_domain_dossier(domain: str, user: dict[str, Any] = Depends(get_current_user)):
+def get_domain_dossier(domain: str, user: dict[str, Any] = Depends(require_permission("daily_review:read"))):
     """Retrieve complete intelligence dossier for a domain across all tiers."""
     canonical = normalize_domain(domain)
     if not canonical:
@@ -225,7 +225,7 @@ def get_domain_dossier(domain: str, user: dict[str, Any] = Depends(get_current_u
 def set_manual_verdict(
     domain: str,
     payload: VerdictOverrideRequest,
-    admin: dict[str, Any] = Depends(require_admin),
+    current_user: dict[str, Any] = Depends(require_permission("daily_review:update")),
 ):
     """Admin manual override to mark a domain Clean or Malicious."""
     canonical = normalize_domain(domain)
@@ -236,16 +236,16 @@ def set_manual_verdict(
         )
 
     verdict_choice = payload.verdict.strip().lower()
-    admin_tag = f"admin_override:{admin.get('email', 'admin')}"
+    admin_tag = f"admin_override:{current_user.get('email', 'admin')}"
 
     if verdict_choice == "clean":
         promote_to_clean(
             canonical,
             source=admin_tag,
-            vt_summary={"override_by": admin.get("email"), "reason": payload.reason},
+            vt_summary={"override_by": current_user.get("email"), "reason": payload.reason},
             otx_summary=None,
         )
-        logger.info("Admin %s marked %s as CLEAN (reason: %s)", admin.get("email"), canonical, payload.reason)
+        logger.info("Admin %s marked %s as CLEAN (reason: %s)", current_user.get("email"), canonical, payload.reason)
         return {
             "success": True,
             "domain": canonical,
@@ -260,12 +260,12 @@ def set_manual_verdict(
                 "source": admin_tag,
                 "confidence": payload.confidence or 1.0,
                 "admin_reason": payload.reason,
-                "admin_email": admin.get("email"),
+                "admin_email": current_user.get("email"),
             },
-            vt_result={"override_by": admin.get("email"), "reason": payload.reason},
+            vt_result={"override_by": current_user.get("email"), "reason": payload.reason},
             otx_result=None,
         )
-        logger.info("Admin %s marked %s as MALICIOUS (reason: %s)", admin.get("email"), canonical, payload.reason)
+        logger.info("Admin %s marked %s as MALICIOUS (reason: %s)", current_user.get("email"), canonical, payload.reason)
         return {
             "success": True,
             "domain": canonical,
@@ -283,7 +283,7 @@ def set_manual_verdict(
 @router.post("/{domain}/trigger")
 def trigger_domain_review(
     domain: str,
-    admin: dict[str, Any] = Depends(require_admin),
+    current_user: dict[str, Any] = Depends(require_permission("domains:investigate")),
 ):
     """Trigger immediate online re-investigation for a domain in the daily review queue."""
     canonical = normalize_domain(domain)

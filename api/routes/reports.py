@@ -21,7 +21,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
-from api.auth import get_current_user
+from api.rbac import require_permission
 from api.schemas import (
     CanonicalVerdict,
     ClientSummaryItem,
@@ -169,7 +169,7 @@ def get_report_summary(
     window: Optional[str] = Query(None, description="Preset window (e.g. 15m, 1h, 24h, 7d, today)"),
     start_time: Optional[str] = Query(None, description="ISO-8601 start timestamp"),
     end_time: Optional[str] = Query(None, description="ISO-8601 end timestamp"),
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("reports:read")),
 ) -> ReportingSummary:
     """Canonical summary endpoint."""
     service = ReportingService()
@@ -187,7 +187,7 @@ def get_reports_root(
     window: Optional[str] = Query(None),
     start_time: Optional[str] = Query(None),
     end_time: Optional[str] = Query(None),
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("reports:read")),
 ) -> ReportingSummary:
     """Compatibility entry point delegating to get_report_summary."""
     return get_report_summary(window=window, start_time=start_time, end_time=end_time, current_user=current_user)
@@ -208,7 +208,7 @@ def get_report_timeseries(
     start_time: Optional[str] = Query(None, description="ISO-8601 start timestamp"),
     end_time: Optional[str] = Query(None, description="ISO-8601 end timestamp"),
     bucket: Optional[str] = Query(None, description="Explicit bucket width (e.g. 5m, 1h, 1d)"),
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("reports:read")),
 ) -> TimeseriesResponse:
     """Canonical timeseries endpoint."""
     service = ReportingService()
@@ -245,7 +245,7 @@ def get_report_clients(
     window: Optional[str] = Query(None),
     start_time: Optional[str] = Query(None),
     end_time: Optional[str] = Query(None),
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("reports:read")),
 ) -> PaginatedResponse[ClientSummaryItem]:
     """Client reporting endpoint."""
     eff_limit, eff_offset = _parse_pagination(limit, offset, page, page_size)
@@ -287,7 +287,7 @@ def get_report_domains(
     window: Optional[str] = Query(None),
     start_time: Optional[str] = Query(None),
     end_time: Optional[str] = Query(None),
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("reports:read")),
 ) -> PaginatedResponse[DomainSummaryItem]:
     """Domain reporting endpoint."""
     eff_limit, eff_offset = _parse_pagination(limit, offset, page, page_size)
@@ -342,7 +342,7 @@ def get_report_queries(
     window: Optional[str] = Query(None),
     start_time: Optional[str] = Query(None),
     end_time: Optional[str] = Query(None),
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("reports:read")),
 ) -> PaginatedResponse[QueryEventItem]:
     """Query log reporting endpoint with SQL search, verdict, and sorting."""
     eff_limit, eff_offset = _parse_pagination(limit, offset, page, page_size)
@@ -403,7 +403,7 @@ def get_report_malicious_domains(
     window: Optional[str] = Query(None),
     start_time: Optional[str] = Query(None),
     end_time: Optional[str] = Query(None),
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("reports:read")),
 ) -> PaginatedResponse[DomainSummaryItem]:
     """Delegates to get_top_domains with verdict=Malicious."""
     eff_limit, eff_offset = _parse_pagination(limit, offset, page, page_size)
@@ -440,7 +440,7 @@ def get_report_flagged(
     window: Optional[str] = Query(None),
     start_time: Optional[str] = Query(None),
     end_time: Optional[str] = Query(None),
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("reports:read")),
 ) -> PaginatedResponse[QueryEventItem]:
     """Delegates to get_queries with verdict='Review Needed'."""
     eff_limit, eff_offset = _parse_pagination(limit, offset, page, page_size)
@@ -472,7 +472,7 @@ def get_report_flagged(
 def get_report_entity(
     entity: str = Query(..., min_length=1, description="Entity identifier (domain name or client IP)"),
     entity_type: Optional[str] = Query(None, description="Optional entity type ('domain' or 'client'). Auto-detected if omitted."),
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("reports:read")),
 ) -> EntityReportResponse:
     """Canonical entity reporting endpoint reusing InvestigationService."""
     clean_entity = entity.strip()
@@ -541,7 +541,7 @@ def get_report_export_csv(
     window: Optional[str] = Query(None),
     start_time: Optional[str] = Query(None),
     end_time: Optional[str] = Query(None),
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(require_permission("reports:export")),
 ) -> StreamingResponse:
     """Streaming CSV export endpoint."""
     service = ReportingService()

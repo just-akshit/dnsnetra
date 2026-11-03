@@ -29,7 +29,6 @@ from fastapi.testclient import TestClient
 
 from api.auth import (
     authenticate_user,
-    create_access_token,
     get_user_by_id,
     get_user_by_username,
     hash_password,
@@ -55,6 +54,7 @@ from api.sessions import (
     revoke_session,
 )
 from labeler.intel.reputation.connection import get_connection
+from tests.auth_testkit import TEST_PASSWORD, login, session_token_from_client
 
 client = TestClient(app)
 
@@ -65,32 +65,17 @@ client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def clean_rate_limits_and_test_users():
-    """Ensure rate limits are reset and clean up ephemeral test users."""
+    """Reset rate limits; conftest deletes every known test-user prefix."""
     reset_rate_limits()
     yield
     reset_rate_limits()
-    # Cleanup test users created with prefix test_
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("DELETE FROM dashboard_users WHERE username LIKE 'test_%';")
-            conn.commit()
 
 
 def get_captcha_with_known_answer() -> tuple[str, str]:
-    """Helper to generate a captcha and retrieve the answer from memory for testing."""
-    challenge = create_captcha(expires_in=300)
-    cid = str(challenge["captcha_id"])
-    # In test context, extract the actual answer or verify via internal signature map
-    # Since answer is normalized upper, we can resolve it by matching candidates or hooking
-    answer = None
-    sig, exp = _ISSUED_CHALLENGES[cid]
-    # Check all candidate strings: in create_captcha, it's 6 uppercase chars/digits
-    # For testing, we can insert a known test challenge directly
-    test_ans = "7K9P2X"
-    from api.captcha import _compute_challenge_signature
-    test_sig = _compute_challenge_signature(cid, test_ans, int(exp))
-    _ISSUED_CHALLENGES[cid] = (test_sig, exp)
-    return cid, test_ans
+    """Issue a challenge with a known answer in the active store."""
+    from tests.auth_testkit import issue_captcha
+
+    return issue_captcha()
 
 
 # ===========================================================================
@@ -174,7 +159,7 @@ def test_captcha_random_variation():
 # 2. Signup Test Suite
 # ===========================================================================
 
-def test_signup_valid():
+def test_signup_valid(signup_enabled):
     """✓ Valid signup creates an account in PENDING status and is_active=false."""
     cid, ans = get_captcha_with_known_answer()
     payload = {
@@ -199,7 +184,7 @@ def test_signup_valid():
     assert user["password_hash"].startswith("$argon2")
 
 
-def test_signup_duplicate_username():
+def test_signup_duplicate_username(signup_enabled):
     """✓ Signup rejects duplicate username with 409 Conflict."""
     cid1, ans1 = get_captcha_with_known_answer()
     client.post(
@@ -228,7 +213,7 @@ def test_signup_duplicate_username():
     assert "already taken" in res.json()["detail"]
 
 
-def test_signup_invalid_username():
+def test_signup_invalid_username(signup_enabled):
     """✓ Signup rejects invalid characters or short usernames."""
     cid, ans = get_captcha_with_known_answer()
     res = client.post(
@@ -244,7 +229,7 @@ def test_signup_invalid_username():
     assert res.status_code in (400, 422)
 
 
-def test_signup_weak_password_and_mismatch():
+def test_signup_weak_password_and_mismatch(signup_enabled):
     """✓ Signup rejects weak password and password mismatch."""
     cid1, ans1 = get_captcha_with_known_answer()
     res_mismatch = client.post(
@@ -274,7 +259,7 @@ def test_signup_weak_password_and_mismatch():
     assert res_weak.status_code == 400
 
 
-def test_signup_wrong_and_expired_captcha():
+def test_signup_wrong_and_expired_captcha(signup_enabled):
     """✓ Signup rejects wrong or expired CAPTCHA challenge."""
     cid, _ = get_captcha_with_known_answer()
     res = client.post(
@@ -291,7 +276,7 @@ def test_signup_wrong_and_expired_captcha():
     assert "CAPTCHA verification failed" in res.json()["detail"]
 
 
-def test_signup_admin_role_injection_prevention():
+def test_signup_admin_role_injection_prevention(signup_enabled):
     """✓ Signup ignores or forbids client-provided role (cannot create Admin)."""
     cid, ans = get_captcha_with_known_answer()
     payload = {
@@ -344,23 +329,24 @@ def test_pending_user_cannot_login():
 # ===========================================================================
 
 def test_login_valid_with_admin():
-    """✓ Valid login against existing admin succeeds and issues session token."""
+    """✓ Valid login against the seeded admin succeeds and issues session token."""
     cid, ans = get_captcha_with_known_answer()
     res = client.post(
         "/api/v1/auth/login",
         json={
-            "username": "admin",
-            "password": "admin",
+            "username": "pytest_admin",
+            "password": TEST_PASSWORD,
             "captcha_id": cid,
             "captcha_answer": ans,
         },
     )
     assert res.status_code == 200
     data = res.json()
-    assert "session_token" in data
-    assert "access_token" in data
+    assert "session_token" not in data
+    assert "access_token" not in data
+    assert client.cookies.get("dnsnetra_session")
     assert data["token_type"] == "bearer"
-    assert data["user"]["username"] == "admin"
+    assert data["user"]["username"] == "pytest_admin"
     assert data["user"]["role"] == "ADMIN"
     assert data["user"]["status"] == "ACTIVE"
 
@@ -371,7 +357,7 @@ def test_login_invalid_password_and_username():
     res1 = client.post(
         "/api/v1/auth/login",
         json={
-            "username": "admin",
+            "username": "pytest_admin",
             "password": "WrongPassword999!",
             "captcha_id": cid1,
             "captcha_answer": ans1,
@@ -396,23 +382,29 @@ def test_login_invalid_password_and_username():
 
 def test_login_rate_limiting():
     """✓ Login endpoint rate limiting throttles excessive attempts with 429."""
-    # Reset bucket
     reset_rate_limits()
-    # 15 requests allowed per minute in route definition
-    for i in range(15):
-        client.post(
-            "/api/v1/auth/login",
-            json={"username": f"user_{i}", "password": "badpassword"},
+    # CAPTCHA is mandatory, so every attempt needs its own fresh challenge.
+    responses = []
+    for _ in range(20):
+        cid, ans = get_captcha_with_known_answer()
+        responses.append(
+            client.post(
+                "/api/v1/auth/login",
+                json={
+                    "username": "rate_limited_user",
+                    "password": "WrongPassword123!",
+                    "captcha_id": cid,
+                    "captcha_answer": ans,
+                },
+            )
         )
 
-    # 16th request must trigger 429 Too Many Requests
-    blocked_res = client.post(
-        "/api/v1/auth/login",
-        json={"username": "user_blocked", "password": "badpassword"},
-    )
-    assert blocked_res.status_code == 429
-    assert "Too many requests" in blocked_res.json()["detail"]
-    assert "Retry-After" in blocked_res.headers
+    statuses = [r.status_code for r in responses]
+    assert 200 not in statuses
+    assert 429 in statuses
+    blocked = responses[statuses.index(429)]
+    assert "Too many" in blocked.json()["detail"]
+    assert "Retry-After" in blocked.headers
 
 
 # ===========================================================================
@@ -421,25 +413,16 @@ def test_login_rate_limiting():
 
 def test_session_lifecycle_and_logout():
     """✓ Full session lifecycle: creation, authenticated request, logout, invalidation."""
-    cid, ans = get_captcha_with_known_answer()
-    login_res = client.post(
-        "/api/v1/auth/login",
-        json={
-            "username": "admin",
-            "password": "admin",
-            "captcha_id": cid,
-            "captcha_answer": ans,
-        },
-    )
+    login_res = login(client, "pytest_admin")
     assert login_res.status_code == 200
-    token = login_res.json()["session_token"]
+    token = session_token_from_client(client)
 
     headers = {"Authorization": f"Bearer {token}"}
 
     # 1. Access protected /me
     me_res = client.get("/api/v1/auth/me", headers=headers)
     assert me_res.status_code == 200
-    assert me_res.json()["username"] == "admin"
+    assert me_res.json()["username"] == "pytest_admin"
 
     # 2. Perform logout
     logout_res = client.post("/api/v1/auth/logout", headers=headers)
@@ -480,6 +463,10 @@ def test_rbac_permission_matrix():
     assert has_permission("SUPPORT", "clients:read") is True
     assert has_permission("SUPPORT", "users:read") is False
     assert has_permission("SUPPORT", "daily_review:update") is False
+    assert has_permission("SUPPORT", "dashboard:read") is True
+    assert has_permission("SUPPORT", "reports:export") is False
+    assert has_permission("ANALYST", "daily_review:update") is True
+    assert has_permission("ANALYST", "users:read") is False
 
 
 def test_unauthenticated_and_forbidden_requests():
@@ -509,7 +496,7 @@ def test_unauthenticated_and_forbidden_requests():
     # Analyst trying to access admin users endpoint -> 403 Forbidden
     forbidden_res = client.get("/api/v1/users", headers=analyst_headers)
     assert forbidden_res.status_code == 403
-    assert "administrator privileges" in forbidden_res.json()["detail"].lower()
+    assert "lacks permission" in forbidden_res.json()["detail"].lower()
 
 
 # ===========================================================================
@@ -655,7 +642,7 @@ def test_audit_logs_recorded_and_retrieved(admin_headers):
     # Trigger an explicit audit event
     log_audit_event(
         action=AuditAction.LOGIN_SUCCESS,
-        user_id=1,
+        user_id=get_user_by_username("admin")["id"],
         metadata={"test_run": True},
     )
 

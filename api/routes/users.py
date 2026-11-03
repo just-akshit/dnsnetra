@@ -33,11 +33,10 @@ from ..auth import (
     get_user_by_username,
     hash_password,
     normalize_username,
-    require_admin,
     validate_password_strength,
     validate_username,
 )
-from ..rbac import UserRole, UserStatus
+from ..rbac import UserRole, UserStatus, require_permission
 from ..sessions import revoke_all_user_sessions
 from ..trusted_proxy import get_client_ip
 
@@ -143,7 +142,7 @@ def list_users(
     status_filter: Optional[str] = Query(None, alias="status", description="Filter by status (PENDING, ACTIVE, DISABLED)"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: dict[str, Any] = Depends(require_permission("users:read")),
 ) -> UserListResponse:
     conditions = []
     params: list[Any] = []
@@ -219,7 +218,7 @@ def list_users(
 )
 def get_user(
     user_id: int,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: dict[str, Any] = Depends(require_permission("users:read")),
 ) -> UserDetail:
     user = get_user_by_id(user_id)
     if not user:
@@ -244,7 +243,7 @@ def get_user(
 def create_user(
     payload: AdminCreateUserRequest,
     request: Request,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: dict[str, Any] = Depends(require_permission("users:create")),
 ) -> UserDetail:
     client_ip, user_agent = _extract_client_meta(request)
 
@@ -285,7 +284,7 @@ def create_user(
                     must_change_password,
                     created_at,
                     updated_at
-                ) VALUES (%s, %s, %s, NULL, %s, %s, %s, false, NOW(), NOW())
+                ) VALUES (%s, %s, %s, NULL, %s, %s, %s, true, NOW(), NOW())
                 RETURNING id, created_at, updated_at;
                 """,
                 (
@@ -320,7 +319,7 @@ def create_user(
         is_active=is_active,
         created_at=created_at,
         updated_at=updated_at,
-        must_change_password=False,
+        must_change_password=True,
     )
 
 
@@ -338,7 +337,7 @@ def update_user(
     user_id: int,
     payload: UpdateUserRequest,
     request: Request,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: dict[str, Any] = Depends(require_permission("users:update")),
 ) -> UserDetail:
     client_ip, user_agent = _extract_client_meta(request)
 
@@ -362,34 +361,47 @@ def update_user(
                 detail="Administrators cannot disable their own account",
             )
 
+    target_role = target_user["role"]
+    target_status = target_user["status"]
+    target_active = target_user["is_active"]
+
+    new_role = payload.role
+    new_status = payload.status
+    new_active = payload.is_active
+
+    if new_status is not None and new_active is not None:
+        if new_active != (new_status == UserStatus.ACTIVE):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="status and is_active must agree",
+            )
+
+    if new_status is None and new_active is not None:
+        new_status = UserStatus.ACTIVE if new_active else UserStatus.DISABLED
+    if new_active is None and new_status is not None:
+        new_active = new_status == UserStatus.ACTIVE
+
+    role_changed = new_role is not None and new_role.value != target_role
+    status_changed = (
+        new_status is not None
+        and (new_status.value != target_status or new_active != target_active)
+    )
+
+    if not role_changed and not status_changed:
+        return UserDetail(**target_user)
+
+    will_demote = role_changed and new_role != UserRole.ADMIN
+    will_deactivate = status_changed and new_status != UserStatus.ACTIVE
+
     updates = []
     params: list[Any] = []
-
-    # Check if role demotion or deactivation
-    will_demote = payload.role is not None and payload.role != UserRole.ADMIN
-    will_deactivate = (payload.status is not None and payload.status != UserStatus.ACTIVE) or payload.is_active is False
-
-    if payload.role is not None:
+    if role_changed:
         updates.append("role = %s")
-        params.append(payload.role.value)
-
-    if payload.status is not None:
+        params.append(new_role.value)
+    if status_changed:
         updates.append("status = %s")
-        params.append(payload.status.value)
-        # Synchronize is_active flag to maintain database invariant
-        if payload.is_active is None:
-            updates.append("is_active = %s")
-            params.append(payload.status == UserStatus.ACTIVE)
-
-    if payload.is_active is not None:
         updates.append("is_active = %s")
-        params.append(payload.is_active)
-        if payload.status is None:
-            updates.append("status = %s")
-            params.append(UserStatus.ACTIVE.value if payload.is_active else UserStatus.DISABLED.value)
-
-    if not updates:
-        return UserDetail(**target_user)
+        params.extend([new_status.value, new_active])
 
     updates.append("updated_at = NOW()")
     params.append(user_id)
@@ -455,9 +467,15 @@ def approve_user(
     user_id: int,
     payload: ApproveUserRequest,
     request: Request,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: dict[str, Any] = Depends(require_permission("users:update")),
 ) -> GenericMessageResponse:
     client_ip, user_agent = _extract_client_meta(request)
+
+    if payload.role not in (UserRole.ANALYST, UserRole.SUPPORT):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Approval may only assign the ANALYST or SUPPORT role",
+        )
 
     target_user = get_user_by_id(user_id)
     if not target_user:
@@ -465,9 +483,25 @@ def approve_user(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"User with ID {user_id} not found",
         )
+    if target_user["status"] != "PENDING":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only PENDING accounts can be approved",
+        )
 
     with get_connection() as conn:
         with conn.cursor() as cur:
+            cur.execute(
+                "SELECT status FROM dashboard_users WHERE id = %s FOR UPDATE;",
+                (user_id,),
+            )
+            row = cur.fetchone()
+            if not row or row[0] != "PENDING":
+                conn.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Account is no longer pending approval",
+                )
             cur.execute(
                 """
                 UPDATE dashboard_users
@@ -475,10 +509,16 @@ def approve_user(
                     is_active = true,
                     role = %s,
                     updated_at = NOW()
-                WHERE id = %s;
+                WHERE id = %s AND status = 'PENDING';
                 """,
                 (payload.role.value, user_id),
             )
+            if cur.rowcount != 1:
+                conn.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Account is no longer pending approval",
+                )
             conn.commit()
 
     log_audit_event(
@@ -509,7 +549,7 @@ def approve_user(
 def disable_user(
     user_id: int,
     request: Request,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: dict[str, Any] = Depends(require_permission("users:update")),
 ) -> GenericMessageResponse:
     client_ip, user_agent = _extract_client_meta(request)
 
@@ -574,7 +614,7 @@ def disable_user(
 def enable_user(
     user_id: int,
     request: Request,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: dict[str, Any] = Depends(require_permission("users:update")),
 ) -> GenericMessageResponse:
     client_ip, user_agent = _extract_client_meta(request)
 
@@ -627,7 +667,7 @@ def reset_password(
     user_id: int,
     payload: ResetPasswordRequest,
     request: Request,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: dict[str, Any] = Depends(require_permission("users:update")),
 ) -> GenericMessageResponse:
     client_ip, user_agent = _extract_client_meta(request)
 
@@ -689,7 +729,7 @@ def reset_password(
 def revoke_sessions(
     user_id: int,
     request: Request,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: dict[str, Any] = Depends(require_permission("users:update")),
 ) -> RevokeSessionsResponse:
     client_ip, user_agent = _extract_client_meta(request)
 
@@ -732,7 +772,7 @@ def list_audit_logs(
     user_id: Optional[int] = Query(None, description="Filter by actor or target user ID"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: dict[str, Any] = Depends(require_permission("audit_logs:read")),
 ) -> dict[str, Any]:
     items, total = get_audit_logs(
         limit=limit,

@@ -311,8 +311,7 @@ export interface DomainAnalyticsResponse {
   }>
 }
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+let currentApiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
 /** Session is the backend's HttpOnly cookie; an expired one sends the user to /login. */
 function redirectToLogin(): void {
@@ -327,13 +326,6 @@ async function apiFetch<T>(
   params: Record<string, string | number | boolean | null | undefined> = {},
   options: { method?: string; body?: unknown; _isRetry?: boolean } = {}
 ): Promise<T> {
-  const url = new URL(path, API_BASE)
-  for (const [k, v] of Object.entries(params)) {
-    if (v !== undefined && v !== null && v !== "") {
-      url.searchParams.set(k, String(v))
-    }
-  }
-
   const headers: Record<string, string> = {
     Accept: "application/json",
   }
@@ -342,14 +334,39 @@ async function apiFetch<T>(
     headers["Content-Type"] = "application/json"
   }
 
-  const res = await fetch(url.toString(), {
-    method: options.method || "GET",
-    headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
-    credentials: "include",
-    // Prevent stale caching on dynamic table queries
-    cache: "no-store",
-  })
+  const bases = [currentApiBase]
+  if (currentApiBase.includes("localhost:8000") || currentApiBase.includes("127.0.0.1:8000")) {
+    bases.push(currentApiBase.replace(":8000", ":8001"))
+  } else if (currentApiBase.includes("localhost:8001") || currentApiBase.includes("127.0.0.1:8001")) {
+    bases.push(currentApiBase.replace(":8001", ":8000"))
+  }
+
+  let res: Response | null = null
+  for (const base of bases) {
+    try {
+      const url = new URL(path, base)
+      for (const [k, v] of Object.entries(params)) {
+        if (v !== undefined && v !== null && v !== "") {
+          url.searchParams.set(k, String(v))
+        }
+      }
+      res = await fetch(url.toString(), {
+        method: options.method || "GET",
+        headers,
+        body: options.body ? JSON.stringify(options.body) : undefined,
+        credentials: "include",
+        cache: "no-store",
+      })
+      currentApiBase = base
+      break
+    } catch {
+      // try fallback base
+    }
+  }
+
+  if (!res) {
+    throw new Error("Can't reach DNSNetra API. Check connection.")
+  }
 
   if (res.status === 401) {
     redirectToLogin()
@@ -546,7 +563,7 @@ export const dnsnetraApi = {
     } = {}
   ): string {
     const hasCustom = Boolean(params.start_time && params.end_time)
-    const url = new URL("/api/v1/reports/export/csv", API_BASE)
+    const url = new URL("/api/v1/reports/export/csv", currentApiBase)
     const queryParams: Record<string, string | number | undefined> = {
       client_ip: params.client_ip,
       domain: params.domain,
@@ -581,7 +598,7 @@ export const dnsnetraApi = {
     } = {}
   ): Promise<void> {
     const hasCustom = Boolean(params.start_time && params.end_time)
-    const url = new URL("/api/v1/reports/export/csv", API_BASE)
+    const url = new URL("/api/v1/reports/export/csv", currentApiBase)
     const queryParams: Record<string, string | number | undefined> = {
       client_ip: params.client_ip,
       domain: params.domain,

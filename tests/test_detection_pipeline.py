@@ -39,6 +39,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import app
+from tests.auth_testkit import bearer_for_username
 from labeler.config import LabelingConfig
 from labeler.intel.correlation.engine import CorrelationEngine
 from labeler.intel.correlation.models import ThreatDecision, ThreatProviderResult
@@ -649,11 +650,8 @@ def test_21_admin_api_endpoints(test_domain):
     assert res.status_code == 200
     assert res.json()["status"] == "healthy"
 
-    # 2. Login
-    login_res = client.post("/api/v1/auth/token", data={"username": "admin@security.local", "password": "admin"})
-    assert login_res.status_code == 200
-    token = login_res.json()["access_token"]
-    headers = {"Authorization": f"Bearer {token}"}
+    # 2. Session (login requires a CAPTCHA; create a real server-side session)
+    headers = bearer_for_username("admin")
 
     # 3. Stats
     stats_res = client.get("/api/v1/daily-review/stats", headers=headers)
@@ -859,9 +857,7 @@ def test_23_scheduler_180_day_journey(mock_correlation_engine, test_domain):
 # ==============================================================================
 def test_24_api_is_due_filter(test_domain):
     client = TestClient(app)
-    login_res = client.post("/api/v1/auth/token", data={"username": "admin@security.local", "password": "admin"})
-    token = login_res.json()["access_token"]
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = bearer_for_username("admin")
 
     due_domain = f"due-{test_domain}"
     not_due_domain = f"notdue-{test_domain}"
@@ -915,9 +911,7 @@ def test_24_api_is_due_filter(test_domain):
 # ==============================================================================
 def test_25_daily_review_stats_contract(test_domain):
     client = TestClient(app)
-    login_res = client.post("/api/v1/auth/token", data={"username": "admin@security.local", "password": "admin"})
-    token = login_res.json()["access_token"]
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = bearer_for_username("admin")
 
     d_due = f"stat-due-{test_domain}"
     d_notdue = f"stat-notdue-{test_domain}"
@@ -966,32 +960,15 @@ def test_25_daily_review_stats_contract(test_domain):
 
 
 # ==============================================================================
-# TEST 26: JWT Secret Environment Validation
+# TEST 26: Authentication Configuration Is Fail-Closed In Production
 # ==============================================================================
-def test_26_jwt_secret_environment_validation():
-    from api.auth import get_jwt_secret_key, DEV_INSECURE_TEST_SECRET
+def test_auth_config_is_fail_closed_in_production(monkeypatch):
+    from api import auth_config
 
-    # 1. Production + missing secret -> must raise RuntimeError
-    with pytest.raises(RuntimeError) as exc_info:
-        get_jwt_secret_key(env="production", secret_key="")
-    assert "CRITICAL SECURITY CONFIGURATION ERROR" in str(exc_info.value)
-
-    # 2. Production + insecure default secret -> must raise RuntimeError
-    with pytest.raises(RuntimeError) as exc_info2:
-        get_jwt_secret_key(env="production", secret_key="dnsnetra-secure-default-change-in-prod")
-    assert "CRITICAL SECURITY CONFIGURATION ERROR" in str(exc_info2.value)
-
-    # 3. Production + secure key -> success
-    prod_key = get_jwt_secret_key(env="production", secret_key="super-secure-production-entropy-key-999")
-    assert prod_key == "super-secure-production-entropy-key-999"
-
-    # 4. Development + missing secret -> returns DEV_INSECURE_TEST_SECRET safely
-    dev_key = get_jwt_secret_key(env="development", secret_key="")
-    assert dev_key == DEV_INSECURE_TEST_SECRET
-
-    # 5. Test environment + missing secret -> returns DEV_INSECURE_TEST_SECRET safely
-    test_key = get_jwt_secret_key(env="test", secret_key="")
-    assert test_key == DEV_INSECURE_TEST_SECRET
+    monkeypatch.setattr(auth_config, "is_production", lambda: True)
+    monkeypatch.delenv("AUTH_SESSION_SECRET", raising=False)
+    with pytest.raises(RuntimeError):
+        auth_config.get_session_pepper()
 
 
 # ==============================================================================

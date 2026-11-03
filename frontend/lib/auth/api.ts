@@ -7,7 +7,11 @@
  */
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
-const AUTH = `${API_BASE}/api/v1/auth`
+let currentApiBase = API_BASE
+
+export function getActiveApiBase(): string {
+  return currentApiBase
+}
 
 export type AuthErrorKind =
   | "credentials"
@@ -18,6 +22,7 @@ export type AuthErrorKind =
   | "taken"
   | "validation"
   | "network"
+  | "password_change_required"
   | "unknown"
 
 export class AuthApiError extends Error {
@@ -71,6 +76,8 @@ function classify(status: number, detail: string): AuthApiError {
   }
   if (d.includes("pending") || d.includes("awaiting"))
     return new AuthApiError("pending", "Your account is pending administrator approval.")
+  if (status === 428)
+    return new AuthApiError("password_change_required", "You must change your password before continuing.")
   if (status === 401 || status === 403)
     return new AuthApiError("credentials", "Incorrect username or password")
   if (status === 409) return new AuthApiError("taken", "That username is already taken.")
@@ -80,17 +87,36 @@ function classify(status: number, detail: string): AuthApiError {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  let res: Response
-  try {
-    res = await fetch(`${AUTH}${path}`, {
-      credentials: "include",
-      cache: "no-store",
-      ...init,
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
-    })
-  } catch {
+  const bases = [currentApiBase]
+  if (currentApiBase.includes("localhost:8000") || currentApiBase.includes("127.0.0.1:8000")) {
+    bases.push(currentApiBase.replace(":8000", ":8001"))
+  } else if (currentApiBase.includes("localhost:8001") || currentApiBase.includes("127.0.0.1:8001")) {
+    bases.push(currentApiBase.replace(":8001", ":8000"))
+  }
+
+  let res: Response | null = null
+  let lastErr: unknown = null
+
+  for (const base of bases) {
+    try {
+      res = await fetch(`${base}/api/v1/auth${path}`, {
+        credentials: "include",
+        cache: "no-store",
+        ...init,
+        headers: { Accept: "application/json", "Content-Type": "application/json", ...(init?.headers || {}) },
+      })
+      currentApiBase = base
+      lastErr = null
+      break
+    } catch (e) {
+      lastErr = e
+    }
+  }
+
+  if (!res) {
     throw new AuthApiError("network", "Can't reach DNSNetra. Check your connection and try again.")
   }
+
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw classify(res.status, detailText(body?.detail))
@@ -111,15 +137,13 @@ export const authApi = {
     captcha_answer: string
   }) => post<{ user: AuthUser }>("/login", b),
 
-  signup: (b: {
-    username: string
-    password: string
-    confirm_password: string
-    captcha_id: string
-    captcha_answer: string
-  }) => post<{ message: string; username: string; status: string }>("/signup", b),
-
   logout: () => post<unknown>("/logout", {}),
+
+  changePassword: (b: {
+    current_password: string
+    new_password: string
+    confirm_password: string
+  }) => post<{ message: string }>("/change-password", b),
 
   /** Resolves to null when there is no valid session. */
   async me(): Promise<AuthUser | null> {

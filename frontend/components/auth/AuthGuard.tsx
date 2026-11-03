@@ -15,7 +15,11 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     authApi
       .me()
-      .then((u) => (u ? setUser(u) : router.replace("/login")))
+      .then((u) => {
+        if (!u) return router.replace("/login")
+        if (u.must_change_password) return router.replace("/change-password")
+        setUser(u)
+      })
       .catch(() => router.replace("/login"))
   }, [router])
 

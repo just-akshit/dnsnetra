@@ -11,7 +11,6 @@ import { PasswordField } from "@/components/auth/PasswordField"
 import { CaptchaField } from "@/components/auth/CaptchaField"
 import { AuthButton } from "@/components/auth/AuthButton"
 import { AuthError } from "@/components/auth/AuthError"
-import { AuthFooter } from "@/components/auth/AuthFooter"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -24,26 +23,32 @@ export default function LoginPage() {
 
   // Already signed in: skip the form.
   React.useEffect(() => {
-    authApi.me().then((u) => u && router.replace("/dashboard")).catch(() => {})
+    authApi
+      .me()
+      .then((u) =>
+        u && router.replace(u.must_change_password ? "/change-password" : "/dashboard")
+      )
+      .catch(() => {})
   }, [router])
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (busy.current) return
     if (!username.trim() || !password) return setError("Enter your username and password.")
-    if (!captcha.challenge || !captcha.answer.trim()) return setError("Enter the CAPTCHA characters.")
+    if (!captcha.challenge) return setError("Verification code could not be loaded. Please click refresh.")
+    if (!captcha.answer.trim()) return setError("Enter the verification characters.")
 
     busy.current = true
     setPending(true)
     setError(null)
     try {
-      await authApi.login({
+      const result = await authApi.login({
         username: username.trim(),
         password,
         captcha_id: captcha.challenge.captcha_id,
         captcha_answer: captcha.answer.trim(),
       })
-      router.replace("/dashboard")
+      router.replace(result.user.must_change_password ? "/change-password" : "/dashboard")
     } catch (err) {
       const e2 = err instanceof AuthApiError ? err : null
       setError(e2?.message ?? "Something went wrong. Please try again.")
@@ -54,16 +59,22 @@ export default function LoginPage() {
     }
   }
 
+  const isCaptchaError = Boolean(
+    error && (error.toLowerCase().includes("captcha") || error.toLowerCase().includes("verification"))
+  )
+
   return (
     <AuthLayout>
       <AuthForm title="Welcome back" subtitle="Sign in to continue to DNSNetra" onSubmit={onSubmit}>
         <UsernameField value={username} onChange={setUsername} disabled={pending} />
         <PasswordField value={password} onChange={setPassword} disabled={pending} />
-        <CaptchaField captcha={captcha} disabled={pending} />
+        <CaptchaField captcha={captcha} error={isCaptchaError ? error : undefined} disabled={pending} />
         <AuthError message={error} />
         <AuthButton pending={pending} idle="Sign in" busy="Signing in..." />
       </AuthForm>
-      <AuthFooter prompt="Don't have an account?" label="Create account" href="/signup" />
+      <p className="text-center text-sm text-[var(--auth-muted)]">
+        Forgotten your password? Ask your administrator to reset it.
+      </p>
     </AuthLayout>
   )
 }

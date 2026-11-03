@@ -17,7 +17,7 @@ import logging
 import os
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Form, Header, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
 
@@ -37,7 +37,13 @@ from ..auth import (
     verify_password,
 )
 from ..captcha import create_captcha, verify_and_consume_captcha
-from ..rate_limiter import rate_limiter
+from ..auth_config import cookie_secure, get_captcha_ttl_seconds, get_session_ttl_seconds, signup_enabled
+from ..login_throttle import (
+    is_locked,
+    record_failure,
+    reset as reset_login_failures,
+)
+from ..rate_limiter import check_rate_limit, rate_limiter
 from ..sessions import create_session, revoke_session
 from ..trusted_proxy import get_client_ip
 
@@ -51,10 +57,7 @@ LEGACY_COOKIE_NAME = "session_token"
 
 def _is_cookie_secure() -> bool:
     """Determine whether cookies must have the Secure attribute."""
-    env = (os.getenv("DNSNETRA_ENV") or os.getenv("APP_ENV") or "development").lower()
-    if env in ("production", "prod"):
-        return True
-    return os.getenv("AUTH_COOKIE_SECURE", "false").lower() in ("true", "1")
+    return cookie_secure()
 
 
 # ---------------------------------------------------------------------------
@@ -85,8 +88,8 @@ class LoginRequest(BaseModel):
     username: Optional[str] = Field(None, max_length=100)
     email: Optional[str] = Field(None, max_length=100)
     password: str = Field(..., min_length=1, max_length=128)
-    captcha_id: Optional[str] = Field(None, max_length=64)
-    captcha_answer: Optional[str] = Field(None, max_length=20)
+    captcha_id: str = Field(..., min_length=10, max_length=64)
+    captcha_answer: str = Field(..., min_length=1, max_length=20)
 
 
 class ChangePasswordRequest(BaseModel):
@@ -97,7 +100,6 @@ class ChangePasswordRequest(BaseModel):
 
 class ChangePasswordResponse(BaseModel):
     message: str
-    session_token: str
 
 
 class LogoutResponse(BaseModel):
@@ -122,7 +124,7 @@ def _extract_client_metadata(request: Request) -> tuple[str, Optional[str]]:
 )
 def get_captcha() -> CaptchaResponse:
     """Generate and return a self-hosted text/image CAPTCHA challenge."""
-    challenge = create_captcha(expires_in=300)
+    challenge = create_captcha(expires_in=get_captcha_ttl_seconds())
     return CaptchaResponse(
         captcha_id=str(challenge["captcha_id"]),
         image=str(challenge["image"]),
@@ -144,6 +146,12 @@ def get_captcha() -> CaptchaResponse:
 )
 def signup(payload: SignupRequest, request: Request) -> SignupResponse:
     """Handle new user self-service signup."""
+    if not signup_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Self-service registration is disabled. Ask an administrator to create your account.",
+        )
+
     client_ip, user_agent = _extract_client_metadata(request)
 
     # 1. Password confirmation check
@@ -242,7 +250,7 @@ def signup(payload: SignupRequest, request: Request) -> SignupResponse:
     "/login",
     response_model=TokenResponse,
     summary="Login with username/password credentials",
-    description="Authenticates active user credentials, verifies CAPTCHA if provided, sets HttpOnly session cookie, and returns session token.",
+    description="Authenticates active user credentials, verifies CAPTCHA, sets the HttpOnly session cookie, and returns the user profile.",
     dependencies=[Depends(rate_limiter(action="login", max_requests=15, window_seconds=60))],
 )
 def login(payload: LoginRequest, request: Request, response: Response) -> TokenResponse:
@@ -256,21 +264,29 @@ def login(payload: LoginRequest, request: Request, response: Response) -> TokenR
             detail="Username or email is required",
         )
 
-    # If CAPTCHA challenge is provided, verify and consume it
-    if payload.captcha_id or payload.captcha_answer:
-        captcha_valid, captcha_err = verify_and_consume_captcha(
-            captcha_id=payload.captcha_id,
-            user_answer=payload.captcha_answer,
+    locked, retry_after = is_locked(identifier)
+    if locked:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts. Please retry later.",
+            headers={"Retry-After": str(retry_after)},
         )
-        if not captcha_valid:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"CAPTCHA verification failed: {captcha_err}",
-            )
+
+    # CAPTCHA is mandatory: verify and consume it before touching credentials
+    captcha_valid, captcha_err = verify_and_consume_captcha(
+        captcha_id=payload.captcha_id,
+        user_answer=payload.captcha_answer,
+    )
+    if not captcha_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"CAPTCHA verification failed: {captcha_err}",
+        )
 
     # Authenticate credentials and verify ACTIVE status
     user = authenticate_user(identifier, payload.password)
     if not user:
+        record_failure(identifier)
         log_audit_event(
             action=AuditAction.LOGIN_FAILURE,
             user_id=None,
@@ -284,11 +300,15 @@ def login(payload: LoginRequest, request: Request, response: Response) -> TokenR
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    reset_login_failures(identifier)
+
     # Create server-side session
+    ttl_seconds = get_session_ttl_seconds()
     raw_session_token, expires_at = create_session(
         user_id=user["id"],
         ip_address=client_ip,
         user_agent=user_agent,
+        expire_minutes=ttl_seconds // 60,
     )
 
     # Set canonical HttpOnly browser session cookie
@@ -298,7 +318,7 @@ def login(payload: LoginRequest, request: Request, response: Response) -> TokenR
         httponly=True,
         secure=_is_cookie_secure(),
         samesite="lax",
-        max_age=86400,
+        max_age=ttl_seconds,
         path="/",
     )
 
@@ -312,10 +332,8 @@ def login(payload: LoginRequest, request: Request, response: Response) -> TokenR
     )
 
     return TokenResponse(
-        session_token=raw_session_token,
-        access_token=raw_session_token,
         token_type="bearer",
-        expires_in=86400,
+        expires_in=ttl_seconds,
         user={
             "id": user["id"],
             "username": user["username"],
@@ -342,12 +360,34 @@ def login_for_access_token(
     request: Request,
     response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
+    captcha_id: str = Form(..., min_length=10, max_length=64),
+    captcha_answer: str = Form(..., min_length=1, max_length=20),
 ) -> TokenResponse:
     """Canonical OAuth2 form password login."""
     client_ip, user_agent = _extract_client_metadata(request)
+
+    locked, retry_after = is_locked(form_data.username)
+    if locked:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts. Please retry later.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    captcha_valid, captcha_err = verify_and_consume_captcha(
+        captcha_id=captcha_id,
+        user_answer=captcha_answer,
+    )
+    if not captcha_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"CAPTCHA verification failed: {captcha_err}",
+        )
+
     user = authenticate_user(form_data.username, form_data.password)
 
     if not user:
+        record_failure(form_data.username)
         log_audit_event(
             action=AuditAction.LOGIN_FAILURE,
             user_id=None,
@@ -361,10 +401,14 @@ def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    reset_login_failures(form_data.username)
+
+    ttl_seconds = get_session_ttl_seconds()
     raw_session_token, _ = create_session(
         user_id=user["id"],
         ip_address=client_ip,
         user_agent=user_agent,
+        expire_minutes=ttl_seconds // 60,
     )
 
     response.set_cookie(
@@ -373,7 +417,7 @@ def login_for_access_token(
         httponly=True,
         secure=_is_cookie_secure(),
         samesite="lax",
-        max_age=86400,
+        max_age=ttl_seconds,
         path="/",
     )
 
@@ -386,10 +430,8 @@ def login_for_access_token(
     )
 
     return TokenResponse(
-        session_token=raw_session_token,
-        access_token=raw_session_token,
         token_type="bearer",
-        expires_in=86400,
+        expires_in=ttl_seconds,
         user={
             "id": user["id"],
             "username": user["username"],
@@ -410,6 +452,7 @@ def login_for_access_token(
     response_model=ChangePasswordResponse,
     summary="Change user password",
     description="Allows authenticated user to update their password. Clears must_change_password flag and issues new session.",
+    dependencies=[Depends(rate_limiter(action="change_password", max_requests=10, window_seconds=60))],
 )
 def user_change_password(
     payload: ChangePasswordRequest,
@@ -419,6 +462,19 @@ def user_change_password(
 ) -> ChangePasswordResponse:
     """Handle user password change."""
     client_ip, user_agent = _extract_client_metadata(request)
+
+    allowed, retry_after = check_rate_limit(
+        key=current_user["username"],
+        action="change_password_user",
+        max_requests=5,
+        window_seconds=60,
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many password change attempts.",
+            headers={"Retry-After": str(retry_after)},
+        )
 
     # Verify confirmation match
     if payload.new_password != payload.confirm_password:
@@ -451,10 +507,12 @@ def user_change_password(
     change_user_password(current_user["id"], payload.new_password)
 
     # Create fresh session for caller
+    ttl_seconds = get_session_ttl_seconds()
     new_session_token, _ = create_session(
         user_id=current_user["id"],
         ip_address=client_ip,
         user_agent=user_agent,
+        expire_minutes=ttl_seconds // 60,
     )
 
     response.set_cookie(
@@ -463,7 +521,7 @@ def user_change_password(
         httponly=True,
         secure=_is_cookie_secure(),
         samesite="lax",
-        max_age=86400,
+        max_age=ttl_seconds,
         path="/",
     )
 
@@ -477,7 +535,6 @@ def user_change_password(
 
     return ChangePasswordResponse(
         message="Password updated successfully",
-        session_token=new_session_token,
     )
 
 

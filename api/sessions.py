@@ -9,6 +9,7 @@ Supports immediate revocation, expiration checks, and multi-session invalidation
 from __future__ import annotations
 
 import hashlib
+import hmac
 import logging
 import os
 import secrets
@@ -17,14 +18,18 @@ from typing import Any, Optional
 
 from labeler.intel.reputation.connection import get_connection
 
-logger = logging.getLogger("api_sessions")
+from .auth_config import get_session_pepper, get_session_ttl_minutes
 
-DEFAULT_SESSION_EXPIRE_MINUTES = int(os.getenv("AUTH_SESSION_EXPIRE_MINUTES", "1440"))  # 24 hours
+logger = logging.getLogger("api_sessions")
 
 
 def hash_session_token(token: str) -> str:
-    """Return SHA-256 hexadecimal hash of the plain session token."""
-    return hashlib.sha256(token.strip().encode("utf-8")).hexdigest()
+    """HMAC-SHA256 of the token keyed by the server pepper."""
+    return hmac.new(
+        get_session_pepper().encode("utf-8"),
+        token.strip().encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
 
 
 def create_session(
@@ -40,7 +45,7 @@ def create_session(
     raw_token = secrets.token_urlsafe(36)
     token_hash = hash_session_token(raw_token)
 
-    mins = expire_minutes if expire_minutes is not None else DEFAULT_SESSION_EXPIRE_MINUTES
+    mins = expire_minutes if expire_minutes is not None else get_session_ttl_minutes()
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=mins)
 
     valid_ip = None
@@ -93,7 +98,8 @@ def get_session_and_user(raw_token: str) -> Optional[dict[str, Any]]:
                     u.status,
                     u.is_active,
                     u.created_at,
-                    u.last_login_at
+                    u.last_login_at,
+                    u.must_change_password
                 FROM sessions s
                 JOIN dashboard_users u ON s.user_id = u.id
                 WHERE s.session_token_hash = %s
@@ -118,6 +124,7 @@ def get_session_and_user(raw_token: str) -> Optional[dict[str, Any]]:
                 is_active,
                 created_at,
                 last_login_at,
+                must_change_password,
             ) = row
 
             now = datetime.now(timezone.utc)
@@ -147,6 +154,7 @@ def get_session_and_user(raw_token: str) -> Optional[dict[str, Any]]:
                 "is_active": is_active,
                 "created_at": created_at,
                 "last_login_at": last_login_at,
+                "must_change_password": bool(must_change_password),
             }
 
 

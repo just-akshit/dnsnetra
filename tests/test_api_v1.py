@@ -19,10 +19,10 @@ from datetime import datetime, timezone
 import pytest
 from fastapi.testclient import TestClient
 
-from api.auth import create_access_token
 from api.main import app
 from api.rate_limiter import reset_rate_limits
 from reporting.schemas import CanonicalVerdict
+from tests.auth_testkit import TEST_PASSWORD, issue_captcha, login
 
 client = TestClient(app)
 
@@ -36,17 +36,9 @@ def _reset_rate_limits_each_test():
 
 
 @pytest.fixture
-def auth_headers():
-    """Generates valid Bearer token for an active admin user."""
-    token = create_access_token(data={"sub": "admin@security.local", "role": "admin"})
-    return {"Authorization": f"Bearer {token}"}
-
-
-@pytest.fixture
-def non_admin_headers():
-    """Generates valid Bearer token for a non-admin user."""
-    token = create_access_token(data={"sub": "analyst@security.local", "role": "analyst"})
-    return {"Authorization": f"Bearer {token}"}
+def auth_headers(admin_headers):
+    """Compat alias: this suite reads the shared ADMIN fixture as `auth_headers`."""
+    return admin_headers
 
 
 # ===========================================================================
@@ -102,46 +94,54 @@ def test_openapi_schema_contains_canonical_endpoints():
 # ===========================================================================
 
 def test_auth_token_success():
-    """OAuth2 password form login succeeds with valid credentials."""
+    """OAuth2 form login succeeds with valid credentials and a CAPTCHA."""
+    captcha_id, answer = issue_captcha()
     res = client.post(
         "/api/v1/auth/token",
-        data={"username": "admin@security.local", "password": "admin"},
+        data={
+            "username": "pytest_admin",
+            "password": TEST_PASSWORD,
+            "captcha_id": captcha_id,
+            "captcha_answer": answer,
+        },
     )
     assert res.status_code == 200
-    data = res.json()
-    assert "access_token" in data
-    assert data["token_type"] == "bearer"
-    assert data["expires_in"] == 86400
+    assert res.json()["token_type"] == "bearer"
+    assert res.json()["expires_in"] > 0
 
 
 def test_auth_token_invalid_password():
-    """OAuth2 password form login fails with wrong password."""
+    captcha_id, answer = issue_captcha()
     res = client.post(
         "/api/v1/auth/token",
-        data={"username": "admin@security.local", "password": "wrongpassword"},
+        data={
+            "username": "pytest_admin",
+            "password": "wrongpassword",
+            "captcha_id": captcha_id,
+            "captcha_answer": answer,
+        },
     )
     assert res.status_code == 401
     assert "Incorrect username or password" in res.json()["detail"]
 
 
 def test_auth_login_json_success():
-    """JSON login alias succeeds with email and password."""
-    res = client.post(
-        "/api/v1/auth/login",
-        json={"email": "admin@security.local", "password": "admin"},
-    )
+    res = login(client, "pytest_admin")
     assert res.status_code == 200
-    data = res.json()
-    assert "access_token" in data
+    assert res.json()["user"]["username"] == "pytest_admin"
     client.cookies.clear()
 
 
 def test_auth_login_json_missing_credentials():
-    """JSON login alias fails if neither email nor username is provided."""
     client.cookies.clear()
+    captcha_id, answer = issue_captcha()
     res = client.post(
         "/api/v1/auth/login",
-        json={"password": "admin"},
+        json={
+            "password": TEST_PASSWORD,
+            "captcha_id": captcha_id,
+            "captcha_answer": answer,
+        },
     )
     assert res.status_code == 400
 
@@ -167,8 +167,8 @@ def test_auth_me_success(auth_headers):
     res = client.get("/api/v1/auth/me", headers=auth_headers)
     assert res.status_code == 200
     data = res.json()
-    assert data["email"] == "admin@security.local"
-    assert data["role"] == "admin"
+    assert data["email"] == "pytest_admin@dnsnetra.local"
+    assert data["role"] == "ADMIN"
     assert data["is_active"] is True
 
 
@@ -632,7 +632,7 @@ def test_dashboard_all_time_and_known_window(auth_headers):
 
 
 
-def test_daily_review_endpoints_and_mutations(auth_headers, non_admin_headers, monkeypatch):
+def test_daily_review_endpoints_and_mutations(auth_headers, analyst_headers, monkeypatch):
     """Verify daily review queries, statistics, and safe admin mutations."""
     # 1. List review domains
     res_list = client.get("/api/v1/daily-review?limit=5", headers=auth_headers)
@@ -659,22 +659,14 @@ def test_daily_review_endpoints_and_mutations(auth_headers, non_admin_headers, m
         assert res_item.status_code == 200
         assert res_item.json()["domain"] == domain_name
 
-    # 4. Mutation: POST /verdict authorization checks
-    # Configure mock user lookup for analyst role
-    monkeypatch.setattr(
-        "api.auth.get_user_by_email",
-        lambda email: {"id": 3, "email": email, "role": "analyst", "is_active": True}
-        if "analyst" in email
-        else {"id": 1, "email": email, "role": "admin", "is_active": True},
-    )
-
-    # Non-admin is rejected with 403 Forbidden
-    res_forbidden = client.post(
+    # 4. Mutation: POST /verdict — ANALYST holds daily_review:update
+    monkeypatch.setattr("api.routes.daily_review.promote_to_clean", lambda *args, **kwargs: None)
+    res_analyst = client.post(
         "/api/v1/daily-review/test-safe-domain.example.com/verdict",
-        headers=non_admin_headers,
-        json={"verdict": "clean", "reason": "Unauthorized test"},
+        headers=analyst_headers,
+        json={"verdict": "clean", "reason": "Analyst review"},
     )
-    assert res_forbidden.status_code == 403
+    assert res_analyst.status_code == 200
 
     # Invalid verdict choice is rejected with 400
     res_invalid = client.post(
@@ -685,7 +677,6 @@ def test_daily_review_endpoints_and_mutations(auth_headers, non_admin_headers, m
     assert res_invalid.status_code == 400
 
     # Valid admin override with mocked promoter
-    monkeypatch.setattr("api.routes.daily_review.promote_to_clean", lambda *args, **kwargs: None)
     res_admin = client.post(
         "/api/v1/daily-review/test-safe-domain.example.com/verdict",
         headers=auth_headers,
@@ -694,19 +685,19 @@ def test_daily_review_endpoints_and_mutations(auth_headers, non_admin_headers, m
     assert res_admin.status_code == 200
     assert res_admin.json()["success"] is True
 
-    # 5. Mutation: POST /trigger authorization and TI isolation
-    # Non-admin is rejected with 403
-    res_trig_forbidden = client.post(
-        "/api/v1/daily-review/test-safe-domain.example.com/trigger",
-        headers=non_admin_headers,
-    )
-    assert res_trig_forbidden.status_code == 403
-
-    # Admin trigger with mocked DailyReviewWorker (zero external live network calls)
+    # 5. Mutation: POST /trigger — ANALYST holds domains:investigate
     monkeypatch.setattr(
         "labeler.intel.daily_review.DailyReviewWorker.process_domain_investigation",
         lambda self, d: "CLEAN",
     )
+    res_trig_analyst = client.post(
+        "/api/v1/daily-review/test-safe-domain.example.com/trigger",
+        headers=analyst_headers,
+    )
+    assert res_trig_analyst.status_code == 200
+
+    # Admin trigger with mocked DailyReviewWorker (zero external live network calls)
+    # Admin trigger (mocked above)
     res_trig = client.post(
         "/api/v1/daily-review/test-safe-domain.example.com/trigger",
         headers=auth_headers,

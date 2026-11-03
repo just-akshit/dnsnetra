@@ -29,7 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from api.auth import get_jwt_secret_key
+from api.auth_config import validate_auth_config
 from api.routes.analytics import router as analytics_router
 from api.routes.auth import router as auth_router
 from api.routes.clients import router as clients_router
@@ -54,12 +54,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger("api_main")
 
+validate_auth_config()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Validate startup environment invariants."""
-    # Ensure production configuration fails immediately if secret is insecure
-    get_jwt_secret_key()
+    # Ensure production configuration fails immediately if secrets are absent or insecure
+    validate_auth_config()
     logger.info("DNSNetra API initialized successfully.")
     yield
 
@@ -89,6 +91,9 @@ app.add_middleware(
 async def add_security_headers(request: Request, call_next):
     """Enforce defensive HTTP security headers on all responses."""
     response = await call_next(request)
+    if request.url.path.startswith("/api/v1/auth/"):
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"

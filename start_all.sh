@@ -86,7 +86,7 @@ fi
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Dashboard  : http://localhost:3000  (admin / admin)"
+echo "  Dashboard  : http://localhost:3000  (credentials: managed by an administrator)"
 echo "  API        : http://localhost:8000/health"
 echo "  Kafka      : localhost:9092  topic=dns-logs"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

@@ -120,7 +120,7 @@ export const authApi = {
     current_password: string
     new_password: string
     confirm_password: string
-  }) => post<{ message: string; session_token: string }>("/change-password", b),
+  }) => post<{ message: string }>("/change-password", b),
 
   /** Resolves to null when there is no valid session. */
   async me(): Promise<AuthUser | null> {

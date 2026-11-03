@@ -422,8 +422,6 @@ async def require_admin(
 # ---------------------------------------------------------------------------
 
 class TokenResponse(BaseModel):
-    session_token: str
-    access_token: str
     token_type: str = "bearer"
     expires_in: int
     user: dict[str, Any]

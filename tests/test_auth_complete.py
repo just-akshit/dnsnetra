@@ -54,7 +54,7 @@ from api.sessions import (
     revoke_session,
 )
 from labeler.intel.reputation.connection import get_connection
-from tests.auth_testkit import TEST_PASSWORD, login
+from tests.auth_testkit import TEST_PASSWORD, login, session_token_from_client
 
 client = TestClient(app)
 
@@ -342,8 +342,9 @@ def test_login_valid_with_admin():
     )
     assert res.status_code == 200
     data = res.json()
-    assert "session_token" in data
-    assert "access_token" in data
+    assert "session_token" not in data
+    assert "access_token" not in data
+    assert client.cookies.get("dnsnetra_session")
     assert data["token_type"] == "bearer"
     assert data["user"]["username"] == "pytest_admin"
     assert data["user"]["role"] == "ADMIN"
@@ -414,7 +415,7 @@ def test_session_lifecycle_and_logout():
     """✓ Full session lifecycle: creation, authenticated request, logout, invalidation."""
     login_res = login(client, "pytest_admin")
     assert login_res.status_code == 200
-    token = login_res.json()["session_token"]
+    token = session_token_from_client(client)
 
     headers = {"Authorization": f"Bearer {token}"}
 

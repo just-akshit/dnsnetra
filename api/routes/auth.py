@@ -95,7 +95,6 @@ class ChangePasswordRequest(BaseModel):
 
 class ChangePasswordResponse(BaseModel):
     message: str
-    session_token: str
 
 
 class LogoutResponse(BaseModel):
@@ -246,7 +245,7 @@ def signup(payload: SignupRequest, request: Request) -> SignupResponse:
     "/login",
     response_model=TokenResponse,
     summary="Login with username/password credentials",
-    description="Authenticates active user credentials, verifies CAPTCHA if provided, sets HttpOnly session cookie, and returns session token.",
+    description="Authenticates active user credentials, verifies CAPTCHA, sets the HttpOnly session cookie, and returns the user profile.",
     dependencies=[Depends(rate_limiter(action="login", max_requests=15, window_seconds=60))],
 )
 def login(payload: LoginRequest, request: Request, response: Response) -> TokenResponse:
@@ -317,8 +316,6 @@ def login(payload: LoginRequest, request: Request, response: Response) -> TokenR
     )
 
     return TokenResponse(
-        session_token=raw_session_token,
-        access_token=raw_session_token,
         token_type="bearer",
         expires_in=ttl_seconds,
         user={
@@ -406,8 +403,6 @@ def login_for_access_token(
     )
 
     return TokenResponse(
-        session_token=raw_session_token,
-        access_token=raw_session_token,
         token_type="bearer",
         expires_in=ttl_seconds,
         user={
@@ -499,7 +494,6 @@ def user_change_password(
 
     return ChangePasswordResponse(
         message="Password updated successfully",
-        session_token=new_session_token,
     )
 
 

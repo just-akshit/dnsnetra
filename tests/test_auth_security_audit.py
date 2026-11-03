@@ -40,7 +40,7 @@ from api.captcha import (
 from api.main import app
 from api.rate_limiter import reset_rate_limits
 from labeler.intel.reputation.connection import get_connection
-from tests.auth_testkit import issue_captcha
+from tests.auth_testkit import issue_captcha, session_token_from_client
 
 PASSWORD = "AuditPass123!"
 
@@ -235,7 +235,7 @@ def test_must_change_password_blocks_privileged_access(mk_user):
         },
     )
     assert login_res.status_code == 200
-    token = login_res.json()["session_token"]
+    token = session_token_from_client(client)
     res = client.get("/api/v1/users?limit=1", headers={"Authorization": f"Bearer {token}"})
     assert res.status_code == 428
     me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
@@ -277,7 +277,8 @@ def test_contradictory_status_update_returns_4xx(mk_user, admin_headers):
 def test_noop_update_does_not_revoke_sessions(mk_user, admin_headers):
     username, uid = mk_user("noop", role="ANALYST")
     client = _client()
-    token = client.post("/api/v1/auth/login", json=_login_body(username)).json()["session_token"]
+    client.post("/api/v1/auth/login", json=_login_body(username))
+    token = session_token_from_client(client)
     client.patch(f"/api/v1/users/{uid}", json={"role": "ANALYST"}, headers=admin_headers)
     res = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert res.status_code == 200
@@ -395,11 +396,15 @@ def test_login_response_is_not_cacheable(mk_user):
     assert "no-store" in (me.headers.get("cache-control") or "").lower()
 
 
-@pytest.mark.xfail(reason="AUTH-14: session token is exposed in the JSON body alongside the HttpOnly cookie", strict=False)
 def test_login_does_not_return_raw_session_token_in_body(mk_user):
     username, _ = mk_user("nobodytoken")
-    res = _client().post("/api/v1/auth/login", json=_login_body(username))
-    assert "session_token" not in res.json()
+    client = _client()
+    res = client.post("/api/v1/auth/login", json=_login_body(username))
+    assert res.status_code == 200
+    body = res.json()
+    assert "session_token" not in body
+    assert "access_token" not in body
+    assert client.cookies.get("dnsnetra_session")
 
 
 # ===========================================================================
@@ -461,7 +466,8 @@ def test_session_cookie_is_httponly_and_samesite(mk_user):
 def test_disabled_user_session_is_rejected(mk_user):
     username, uid = mk_user("disabled_session")
     client = _client()
-    token = client.post("/api/v1/auth/login", json=_login_body(username)).json()["session_token"]
+    client.post("/api/v1/auth/login", json=_login_body(username))
+    token = session_token_from_client(client)
     _db(
         "UPDATE dashboard_users SET status = 'DISABLED', is_active = false WHERE id = %s",
         (uid,),
@@ -499,9 +505,11 @@ def test_garbage_bearer_token_is_401():
 def test_password_change_revokes_other_sessions(mk_user):
     username, _ = mk_user("rotate")
     first = _client()
-    t1 = first.post("/api/v1/auth/login", json=_login_body(username)).json()["session_token"]
+    first.post("/api/v1/auth/login", json=_login_body(username))
+    t1 = session_token_from_client(first)
     second = _client()
-    t2 = second.post("/api/v1/auth/login", json=_login_body(username)).json()["session_token"]
+    second.post("/api/v1/auth/login", json=_login_body(username))
+    t2 = session_token_from_client(second)
 
     res = first.post(
         "/api/v1/auth/change-password",
@@ -516,4 +524,4 @@ def test_password_change_revokes_other_sessions(mk_user):
     assert second.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {t2}"}).status_code == 401
     assert first.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {t1}"}).status_code == 401
     # the freshly issued replacement session works
-    assert first.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {res.json()['session_token']}"}).status_code == 200
+    assert first.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {session_token_from_client(first)}"}).status_code == 200

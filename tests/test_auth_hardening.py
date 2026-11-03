@@ -69,7 +69,7 @@ from api.sessions import (
     revoke_session,
 )
 from api.trusted_proxy import get_client_ip
-from tests.auth_testkit import TEST_PASSWORD, issue_captcha
+from tests.auth_testkit import TEST_PASSWORD, issue_captcha, session_token_from_client
 from labeler.intel.reputation.connection import get_connection
 
 client = TestClient(app)
@@ -310,7 +310,7 @@ def test_csrf_rejection_on_untrusted_origin():
 def test_csrf_allowed_with_bearer_token_regardless_of_origin():
     """✓ Bearer token API requests bypass CSRF origin checks."""
     login_res = _login("pytest_admin")
-    token = login_res.json()["access_token"]
+    token = session_token_from_client(client)
     client.cookies.clear()
 
     # Even with untrusted Origin, Authorization: Bearer is immune to CSRF
@@ -332,7 +332,7 @@ def test_admin_cannot_demote_final_admin():
     """✓ Admin cannot demote themselves if they are the last active admin."""
     # Ensure admin user is the target
     login_res = _login("pytest_admin")
-    token = login_res.json()["access_token"]
+    token = session_token_from_client(client)
     admin_id = login_res.json()["user"]["id"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -349,7 +349,7 @@ def test_admin_cannot_demote_final_admin():
 def test_admin_cannot_disable_final_admin():
     """✓ Admin cannot disable themselves or the last active admin."""
     login_res = _login("pytest_admin")
-    token = login_res.json()["access_token"]
+    token = session_token_from_client(client)
     admin_id = login_res.json()["user"]["id"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -364,7 +364,7 @@ def test_admin_cannot_disable_final_admin():
 def test_two_admins_can_manage_each_other_safely():
     """✓ Two admins can manage each other, but the final remaining admin is protected."""
     login_res = _login("pytest_admin")
-    token = login_res.json()["access_token"]
+    token = session_token_from_client(client)
     headers = {"Authorization": f"Bearer {token}"}
 
     # 1. Create a second admin
@@ -481,7 +481,7 @@ def test_password_reset_and_must_change_password_flow():
     """✓ Password reset sets must_change_password and revokes all active sessions."""
     # 1. Admin login
     login_res = _login("pytest_admin")
-    admin_token = login_res.json()["access_token"]
+    admin_token = session_token_from_client(client)
     headers = {"Authorization": f"Bearer {admin_token}"}
 
     # 2. Create analyst user
@@ -497,7 +497,7 @@ def test_password_reset_and_must_change_password_flow():
     client.cookies.clear()
     res_user_login = _login(analyst_name, "InitialPass123!")
     assert res_user_login.status_code == 200
-    user_token = res_user_login.json()["access_token"]
+    user_token = session_token_from_client(client)
 
     # 4. Admin resets password
     res_reset = client.post(
@@ -515,7 +515,7 @@ def test_password_reset_and_must_change_password_flow():
     res_new_login = _login(analyst_name, "TempPassword999!")
     assert res_new_login.status_code == 200
     assert res_new_login.json()["user"]["must_change_password"] is True
-    new_token = res_new_login.json()["access_token"]
+    new_token = session_token_from_client(client)
 
     # 7. User changes password via /auth/change-password
     res_change = client.post(
@@ -529,7 +529,7 @@ def test_password_reset_and_must_change_password_flow():
     )
     assert res_change.status_code == 200
     assert "Password updated successfully" in res_change.json()["message"]
-    new_session = res_change.json()["session_token"]
+    new_session = session_token_from_client(client)
     assert get_user_by_id(uid)["must_change_password"] is False
 
     # Verify /auth/me returns must_change_password == False
@@ -546,7 +546,7 @@ def test_password_reset_and_must_change_password_flow():
 def test_session_token_stored_hashed_never_plaintext():
     """✓ Session tokens are stored as SHA-256 hashes in database."""
     login_res = _login("pytest_admin")
-    raw_token = login_res.json()["access_token"]
+    raw_token = session_token_from_client(client)
     expected_hash = hash_session_token(raw_token)
 
     with get_connection() as conn:
@@ -565,7 +565,7 @@ def test_session_token_stored_hashed_never_plaintext():
 def test_re_enabling_account_does_not_resurrect_sessions():
     """✓ Re-enabling a disabled account does NOT resurrect previously revoked sessions."""
     login_res = _login("pytest_admin")
-    admin_token = login_res.json()["access_token"]
+    admin_token = session_token_from_client(client)
     headers = {"Authorization": f"Bearer {admin_token}"}
 
     # 1. Create active user
@@ -580,7 +580,7 @@ def test_re_enabling_account_does_not_resurrect_sessions():
     # 2. User logs in
     client.cookies.clear()
     u_login = _login(uname, "Password123!")
-    user_token = u_login.json()["access_token"]
+    user_token = session_token_from_client(client)
 
     # 3. Admin disables user
     client.post(f"/api/v1/users/{uid}/disable", headers=headers)

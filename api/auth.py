@@ -93,7 +93,7 @@ def validate_password_strength(password: str, username: Optional[str] = None) ->
 
     if not re.search(r"[a-zA-Z]", password):
         return False, "Password must contain at least one letter"
-    if not re.search(r"[0-9!@#$%^&*(),.?\":{}|<>]", password):
+    if not re.search(r"[^A-Za-z]", password):
         return False, "Password must contain at least one digit or special character"
     return True, "OK"
 
@@ -107,6 +107,10 @@ def normalize_username(username: Optional[str]) -> str:
     if not username:
         return ""
     return username.strip().lower()
+
+
+def _reserved_key(value: str) -> str:
+    return value.strip().strip("._-").lower()
 
 
 def validate_username(username: str, is_signup: bool = False) -> tuple[bool, str]:
@@ -124,7 +128,7 @@ def validate_username(username: str, is_signup: bool = False) -> tuple[bool, str
     if not re.match(r"^[a-zA-Z0-9_.-]+$", clean):
         return False, "Username may only contain letters, numbers, underscores, dashes, and periods"
 
-    if is_signup and clean.lower() in RESERVED_USERNAMES:
+    if is_signup and _reserved_key(clean) in RESERVED_USERNAMES:
         return False, f"Username '{clean}' is reserved by the system"
 
     return True, "OK"

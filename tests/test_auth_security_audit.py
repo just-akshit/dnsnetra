@@ -431,16 +431,20 @@ def test_public_signup_is_disabled_by_default(monkeypatch):
 # AUTH-17: password / username policy inconsistencies
 # ===========================================================================
 
-@pytest.mark.xfail(reason="AUTH-17: '_' is a special character but the policy rejects it", strict=False)
 def test_underscore_counts_as_special_character():
     ok, reason = auth.validate_password_strength("Password_")
     assert ok, reason
 
 
-@pytest.mark.xfail(reason="AUTH-17: '.admin.' bypasses the reserved-name list", strict=False)
-def test_dotted_reserved_username_is_rejected():
-    ok, reason = auth.validate_username(".admin.", is_signup=True)
+@pytest.mark.parametrize("candidate", [".admin.", "admin.", "_admin_", "Admin.", ".ROOT."])
+def test_dotted_reserved_username_is_rejected(candidate):
+    ok, reason = auth.validate_username(candidate, is_signup=True)
     assert not ok, reason
+
+
+def test_normal_username_with_dot_is_still_allowed():
+    ok, reason = auth.validate_username("john.doe", is_signup=True)
+    assert ok, reason
 
 
 # ===========================================================================

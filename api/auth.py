@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import secrets
 from datetime import datetime
 from typing import Any, Optional
 
@@ -58,6 +59,9 @@ _hasher = argon2.PasswordHasher(
     hash_len=32,
     type=argon2.Type.ID,
 )
+
+# A fixed hash used to spend the same Argon2id work for unknown usernames.
+_DUMMY_PASSWORD_HASH = _hasher.hash(secrets.token_urlsafe(32))
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -260,9 +264,11 @@ def authenticate_user(identifier: str, plain_password: str) -> Optional[dict[str
     """
     user = get_user_by_username(identifier)
     if not user:
+        verify_password(plain_password, _DUMMY_PASSWORD_HASH)
         return None
 
     if not user.get("is_active") or user.get("status") != "ACTIVE":
+        verify_password(plain_password, user.get("password_hash") or _DUMMY_PASSWORD_HASH)
         return None
 
     stored_hash = user.get("password_hash") or ""

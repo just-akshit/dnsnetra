@@ -367,25 +367,19 @@ def test_captcha_rejects_when_consume_fails():
 # AUTH-12: username enumeration via timing
 # ===========================================================================
 
-@pytest.mark.xfail(reason="AUTH-12: unknown users skip password hashing (timing oracle)", strict=False)
-def test_unknown_user_still_performs_a_dummy_hash(mk_user):
-    username, _ = mk_user("timing")
-    original = auth.verify_password
-    calls = {"n": 0}
+def test_unknown_user_still_performs_a_dummy_hash(monkeypatch):
+    calls: list[str] = []
+    real_verify = auth.verify_password
 
-    def spy(plain, hashed):
-        calls["n"] += 1
-        return original(plain, hashed)
+    def counting_verify(plain: str, hashed: str) -> bool:
+        calls.append(hashed)
+        return real_verify(plain, hashed)
 
-    auth.verify_password = spy
-    try:
-        auth.authenticate_user("definitely_missing_user_zzz", PASSWORD)
-        assert calls["n"] == 1, "no dummy hash performed for unknown user"
-        calls["n"] = 0
-        auth.authenticate_user(username, "WrongPassword123!")
-        assert calls["n"] == 1
-    finally:
-        auth.verify_password = original
+    monkeypatch.setattr(auth, "verify_password", counting_verify)
+    res = _client().post("/api/v1/auth/login", json=_login_body("definitely_missing_user"))
+    assert res.status_code == 401
+    assert len(calls) == 1
+    assert calls[0] == auth._DUMMY_PASSWORD_HASH
 
 
 # ===========================================================================

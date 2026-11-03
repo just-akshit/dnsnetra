@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import UsersPage from "./page"
+import UsersPage from "@/app/(dashboard)/users/page"
 
 // ---------- shared mock state (vi.hoisted so vi.mock factories can reference) --
 
@@ -133,7 +133,6 @@ describe("UsersPage", () => {
 
   it("renders Create user button for admins", async () => {
     render(<UsersPage />)
-    // The button is present in the DOM before data loads (it's in the header)
     expect(screen.getByRole("button", { name: /Create user/i })).toBeInTheDocument()
   })
 })

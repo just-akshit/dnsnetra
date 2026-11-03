@@ -1,7 +1,7 @@
 import * as React from "react"
 import { render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { AppSidebar } from "./app-sidebar"
+import { AppSidebar } from "@/components/app-sidebar"
 import { SidebarProvider } from "@/components/ui/sidebar"
 
 const state = vi.hoisted(() => ({

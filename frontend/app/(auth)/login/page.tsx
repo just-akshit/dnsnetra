@@ -35,7 +35,8 @@ export default function LoginPage() {
     e.preventDefault()
     if (busy.current) return
     if (!username.trim() || !password) return setError("Enter your username and password.")
-    if (!captcha.challenge || !captcha.answer.trim()) return setError("Enter the CAPTCHA characters.")
+    if (!captcha.challenge) return setError("Verification code could not be loaded. Please click refresh.")
+    if (!captcha.answer.trim()) return setError("Enter the verification characters.")
 
     busy.current = true
     setPending(true)
@@ -58,12 +59,16 @@ export default function LoginPage() {
     }
   }
 
+  const isCaptchaError = Boolean(
+    error && (error.toLowerCase().includes("captcha") || error.toLowerCase().includes("verification"))
+  )
+
   return (
     <AuthLayout>
       <AuthForm title="Welcome back" subtitle="Sign in to continue to DNSNetra" onSubmit={onSubmit}>
         <UsernameField value={username} onChange={setUsername} disabled={pending} />
         <PasswordField value={password} onChange={setPassword} disabled={pending} />
-        <CaptchaField captcha={captcha} disabled={pending} />
+        <CaptchaField captcha={captcha} error={isCaptchaError ? error : undefined} disabled={pending} />
         <AuthError message={error} />
         <AuthButton pending={pending} idle="Sign in" busy="Signing in..." />
       </AuthForm>

@@ -12,14 +12,16 @@ export function AuthForm({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex flex-col gap-8">
-      <header className="flex flex-col gap-2">
-        <h1 className="auth-brand-font text-[2rem] leading-[1.1] font-semibold tracking-[-0.02em] text-balance text-[var(--auth-ink)]">
+    <div className="flex flex-col gap-7 w-full">
+      <header className="flex flex-col items-center text-center gap-1.5">
+        <h1 className="auth-brand-font text-[1.75rem] sm:text-[1.875rem] leading-[1.2] font-semibold tracking-[-0.025em] text-balance text-[var(--auth-ink)]">
           {title}
         </h1>
-        <p className="text-[0.9375rem] text-[var(--auth-muted)]">{subtitle}</p>
+        <p className="text-[0.9375rem] text-[var(--auth-muted)] text-balance">
+          {subtitle}
+        </p>
       </header>
-      <form noValidate onSubmit={onSubmit} className="flex flex-col gap-5">
+      <form noValidate onSubmit={onSubmit} className="flex flex-col gap-4.5 w-full">
         {children}
       </form>
     </div>

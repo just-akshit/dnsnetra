@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Script from "next/script";
-import { Geist, Geist_Mono, Outfit } from "next/font/google";
+import { Geist, Geist_Mono, DM_Sans } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// Wordmark + auth headings only. Swap this one import to change the brand face.
-const brand = Outfit({
+// Instagram Sans geometric fallback: rounded, clean modern proportions.
+const brand = DM_Sans({
   variable: "--font-brand",
   subsets: ["latin"],
 });

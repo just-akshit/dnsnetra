@@ -392,11 +392,13 @@ def test_unknown_user_still_performs_a_dummy_hash(mk_user):
 # AUTH-15: token-bearing responses must not be cacheable
 # ===========================================================================
 
-@pytest.mark.xfail(reason="AUTH-15: /auth/login response (contains token) has no Cache-Control", strict=False)
 def test_login_response_is_not_cacheable(mk_user):
     username, _ = mk_user("cache")
-    res = _client().post("/api/v1/auth/login", json=_login_body(username))
+    client = _client()
+    res = client.post("/api/v1/auth/login", json=_login_body(username))
     assert "no-store" in (res.headers.get("cache-control") or "").lower()
+    me = client.get("/api/v1/auth/me")
+    assert "no-store" in (me.headers.get("cache-control") or "").lower()
 
 
 @pytest.mark.xfail(reason="AUTH-14: session token is exposed in the JSON body alongside the HttpOnly cookie", strict=False)

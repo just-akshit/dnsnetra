@@ -46,3 +46,4 @@ describe("AppSidebar", () => {
     expect(screen.getByText("Users")).toBeInTheDocument()
   })
 })
+

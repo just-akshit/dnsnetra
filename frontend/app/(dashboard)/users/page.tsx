@@ -40,7 +40,7 @@ export default function UsersPage() {
     }
   }, [])
 
-  React.useEffect(() => { void load() }, [load])
+  React.useEffect(() => { if (me?.role === "ADMIN") void load() }, [load, me?.role])
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true)
@@ -257,3 +257,4 @@ function ResetPasswordDialog({
     </Dialog>
   )
 }
+

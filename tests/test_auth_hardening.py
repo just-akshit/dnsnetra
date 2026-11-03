@@ -605,7 +605,7 @@ def test_re_enabling_account_does_not_resurrect_sessions():
 def test_audit_logs_contain_no_sensitive_values():
     """✓ Audit log entries never store passwords, hashes, tokens, or captcha answers."""
     # Trigger an audit event with sensitive dummy details
-    uid = 1
+    uid = get_user_by_username("admin")["id"]
     log_audit_event(
         action=AuditAction.PASSWORD_RESET,
         user_id=uid,

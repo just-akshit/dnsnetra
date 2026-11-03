@@ -641,7 +641,7 @@ def test_audit_logs_recorded_and_retrieved(admin_headers):
     # Trigger an explicit audit event
     log_audit_event(
         action=AuditAction.LOGIN_SUCCESS,
-        user_id=1,
+        user_id=get_user_by_username("admin")["id"],
         metadata={"test_run": True},
     )
 

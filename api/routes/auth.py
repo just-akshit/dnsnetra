@@ -44,7 +44,12 @@ from ..login_throttle import (
     reset as reset_login_failures,
 )
 from ..rate_limiter import check_rate_limit, rate_limiter
-from ..sessions import create_session, revoke_session
+from ..sessions import (
+    create_session,
+    hash_session_token,
+    revoke_all_user_sessions,
+    revoke_session,
+)
 from ..trusted_proxy import get_client_ip
 
 logger = logging.getLogger("api_auth_router")
@@ -573,6 +578,82 @@ def logout(
     )
 
     return LogoutResponse(message="Logged out successfully")
+
+
+# ---------------------------------------------------------------------------
+# 6b. Reset Password with One-Time Code
+# ---------------------------------------------------------------------------
+
+class ResetPasswordRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=100)
+    code: str = Field(..., min_length=4, max_length=64)
+    new_password: str = Field(..., min_length=8, max_length=128)
+    confirm_password: str = Field(..., min_length=8, max_length=128)
+    captcha_id: str = Field(..., min_length=10, max_length=64)
+    captcha_answer: str = Field(..., min_length=1, max_length=20)
+
+
+@router.post(
+    "/reset-password",
+    summary="Redeem a one-time password reset code",
+    dependencies=[Depends(rate_limiter(action="reset_password", max_requests=10, window_seconds=60))],
+)
+def reset_password(payload: ResetPasswordRequest, request: Request) -> dict[str, str]:
+    captcha_valid, captcha_err = verify_and_consume_captcha(
+        captcha_id=payload.captcha_id, user_answer=payload.captcha_answer
+    )
+    if not captcha_valid:
+        raise HTTPException(status_code=400, detail=f"CAPTCHA verification failed: {captcha_err}")
+
+    if payload.new_password != payload.confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match")
+
+    user = get_user_by_username(payload.username)
+    generic = HTTPException(status_code=400, detail="Invalid or expired reset code")
+    if not user:
+        raise generic
+
+    ok, reason = validate_password_strength(payload.new_password, user["username"])
+    if not ok:
+        raise HTTPException(status_code=400, detail=reason)
+
+    token_hash = hash_session_token(payload.code)
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id FROM password_reset_tokens
+                WHERE user_id = %s AND token_hash = %s
+                  AND used_at IS NULL AND expires_at > NOW()
+                FOR UPDATE;
+                """,
+                (user["id"], token_hash),
+            )
+            row = cur.fetchone()
+            if not row:
+                conn.rollback()
+                raise generic
+            cur.execute(
+                "UPDATE dashboard_users SET password_hash = %s, hashed_password = NULL, "
+                "must_change_password = false, updated_at = NOW() WHERE id = %s;",
+                (hash_password(payload.new_password), user["id"]),
+            )
+            cur.execute(
+                "UPDATE password_reset_tokens SET used_at = NOW() WHERE id = %s;",
+                (row[0],),
+            )
+            conn.commit()
+
+    revoke_all_user_sessions(user["id"])
+    log_audit_event(
+        action="PASSWORD_RESET_COMPLETED",
+        user_id=user["id"],
+        target_user_id=user["id"],
+        ip_address=get_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+        metadata={"username": user["username"]},
+    )
+    return {"message": "Password updated. Sign in with your new password."}
 
 
 # ---------------------------------------------------------------------------

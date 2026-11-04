@@ -145,6 +145,15 @@ export const authApi = {
     confirm_password: string
   }) => post<{ message: string }>("/change-password", b),
 
+  resetPassword: (b: {
+    username: string
+    code: string
+    new_password: string
+    confirm_password: string
+    captcha_id: string
+    captcha_answer: string
+  }) => post<{ message: string }>("/reset-password", b),
+
   /** Resolves to null when there is no valid session. */
   async me(): Promise<AuthUser | null> {
     try {

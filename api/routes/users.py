@@ -20,7 +20,8 @@ to prevent any single or concurrent transactions from reducing active administra
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -37,7 +38,7 @@ from ..auth import (
     validate_username,
 )
 from ..rbac import UserRole, UserStatus, require_permission
-from ..sessions import revoke_all_user_sessions
+from ..sessions import hash_session_token, revoke_all_user_sessions
 from ..trusted_proxy import get_client_ip
 
 logger = logging.getLogger("api_users_router")
@@ -99,6 +100,11 @@ class RevokeSessionsResponse(BaseModel):
     message: str
     user_id: int
     revoked_count: int
+
+
+class ResetCodeResponse(BaseModel):
+    code: str
+    expires_at: datetime
 
 
 def _extract_client_meta(request: Request) -> tuple[str, Optional[str]]:
@@ -786,3 +792,50 @@ def list_audit_logs(
         "offset": offset,
         "items": items,
     }
+
+
+# ---------------------------------------------------------------------------
+# 11. Issue One-Time Password Reset Code
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/{user_id}/reset-code",
+    response_model=ResetCodeResponse,
+    summary="Issue a one-time password reset code (Admin only)",
+)
+def issue_reset_code(
+    user_id: int,
+    request: Request,
+    admin: dict[str, Any] = Depends(require_permission("users:update")),
+) -> ResetCodeResponse:
+    target = get_user_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail=f"User with ID {user_id} not found")
+
+    code = secrets.token_urlsafe(9)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE password_reset_tokens SET used_at = NOW() "
+                "WHERE user_id = %s AND used_at IS NULL;",
+                (user_id,),
+            )
+            cur.execute(
+                "INSERT INTO password_reset_tokens "
+                "(user_id, token_hash, expires_at, created_by) "
+                "VALUES (%s, %s, %s, %s);",
+                (user_id, hash_session_token(code), expires_at, admin["id"]),
+            )
+            conn.commit()
+
+    log_audit_event(
+        action="PASSWORD_RESET_CODE_ISSUED",
+        user_id=admin["id"],
+        target_user_id=user_id,
+        ip_address=get_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+        metadata={},
+    )
+    return ResetCodeResponse(code=code, expires_at=expires_at)

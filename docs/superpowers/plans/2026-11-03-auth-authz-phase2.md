@@ -1048,7 +1048,7 @@ export const usersApi = {
 }
 ```
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -1080,7 +1080,7 @@ describe("usersApi", () => {
 })
 ```
 
-- [ ] **Step 2: Run red**
+- [x] **Step 2: Run red**
 
 ```bash
 cd frontend && pnpm vitest run lib/admin/users-api.test.ts
@@ -1088,7 +1088,7 @@ cd frontend && pnpm vitest run lib/admin/users-api.test.ts
 
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement the client**
+- [x] **Step 3: Implement the client**
 
 ```ts
 import { getActiveApiBase } from "@/lib/auth/api"
@@ -1179,13 +1179,13 @@ export const usersApi = {
 }
 ```
 
-- [ ] **Step 4: Run green**
+- [x] **Step 4: Run green**
 
 ```bash
 cd frontend && pnpm vitest run lib/admin/users-api.test.ts
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/lib/admin/users-api.ts frontend/lib/admin/users-api.test.ts
@@ -1204,7 +1204,7 @@ git commit -m "feat(admin): add typed users API client"
 - Consumes: `usersApi`.
 - Produces: pending-approval table, active/disabled table, create form, reset dialog, disable/enable/revoke actions.
 
-- [ ] **Step 1: Write the failing smoke test**
+- [x] **Step 1: Write the failing smoke test**
 
 ```tsx
 import { render, screen, waitFor } from "@testing-library/react"
@@ -1244,7 +1244,7 @@ describe("UsersPage", () => {
 })
 ```
 
-- [ ] **Step 2: Run red**
+- [x] **Step 2: Run red**
 
 ```bash
 cd frontend && pnpm vitest run "app/(dashboard)/users/page.test.tsx"
@@ -1252,7 +1252,7 @@ cd frontend && pnpm vitest run "app/(dashboard)/users/page.test.tsx"
 
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement the page**
+- [x] **Step 3: Implement the page**
 
 Use `Table`, `Badge`, `Button`, `Input`, `Label`, `Dialog`, `Select` from `@/components/ui/*`. Keep the page client-side.
 
@@ -1518,13 +1518,13 @@ function ResetPasswordDialog({
 }
 ```
 
-- [ ] **Step 4: Run the test and the build**
+- [x] **Step 4: Run the test and the build**
 
 ```bash
 cd frontend && pnpm vitest run "app/(dashboard)/users/page.test.tsx" && pnpm build
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add "frontend/app/(dashboard)/users/page.tsx" "frontend/app/(dashboard)/users/page.test.tsx"
@@ -1543,7 +1543,7 @@ git commit -m "feat(admin): add user lifecycle page"
 - Consumes: `useAuthUser()` → `{ role }`.
 - Produces: “Users” link visible only to `ADMIN`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```tsx
 import * as React from "react"
@@ -1597,7 +1597,7 @@ describe("AppSidebar", () => {
 })
 ```
 
-- [ ] **Step 2: Run red**
+- [x] **Step 2: Run red**
 
 ```bash
 cd frontend && pnpm vitest run components/app-sidebar.test.tsx
@@ -1606,7 +1606,7 @@ cd frontend && pnpm vitest run components/app-sidebar.test.tsx
 Expected: FAIL on “shows Users to admins” — the entry does not exist yet. The
 non-admin case passes vacuously until the link is added; Step 4 re-runs both.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Add to `navSystem`:
 
@@ -1636,13 +1636,13 @@ Filter the System group before mapping (`user` already exists in the component):
   ))}
 ```
 
-- [ ] **Step 4: Run green + build**
+- [x] **Step 4: Run green + build**
 
 ```bash
 cd frontend && pnpm vitest run components/app-sidebar.test.tsx && pnpm test && pnpm build
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/components/app-sidebar.tsx frontend/components/app-sidebar.test.tsx
@@ -1670,7 +1670,7 @@ git commit -m "feat(admin): gate user management navigation by role"
 - Table `password_reset_tokens(id, user_id, token_hash, expires_at, used_at, created_by, created_at)`
 - Code: `secrets.token_urlsafe(9)` (12 chars), stored as `hash_session_token(code)`, TTL 15 min, single use.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `tests/test_password_reset.py` reuses the disposable-user fixture and admin session fixture from the audit module (pytest collects imported fixtures):
 
@@ -1714,7 +1714,7 @@ def test_reset_code_changes_password_once(mk_user, admin_headers):
     assert replay.status_code == 400
 ```
 
-- [ ] **Step 2: Run red**
+- [x] **Step 2: Run red**
 
 ```bash
 $PY -m pytest tests/test_password_reset.py -q
@@ -1722,7 +1722,7 @@ $PY -m pytest tests/test_password_reset.py -q
 
 Expected: 404 — route absent.
 
-- [ ] **Step 3: Add the migration**
+- [x] **Step 3: Add the migration**
 
 `database/migrations/009_password_reset_tokens.sql`:
 
@@ -1749,7 +1749,7 @@ Apply:
 $PY database/migrate.py
 ```
 
-- [ ] **Step 4: Issue codes (admin route)**
+- [x] **Step 4: Issue codes (admin route)**
 
 Add to `api/routes/users.py`:
 
@@ -1804,7 +1804,7 @@ def issue_reset_code(
 
 Imports in `api/routes/users.py`: add `import secrets`, extend `from datetime import datetime` to `from datetime import datetime, timedelta, timezone`, and import `hash_session_token` from `..sessions` (alongside the existing `revoke_all_user_sessions`).
 
-- [ ] **Step 5: Redeem codes (public route)**
+- [x] **Step 5: Redeem codes (public route)**
 
 In `api/routes/auth.py`, extend the sessions import first:
 
@@ -1892,7 +1892,7 @@ def reset_password(payload: ResetPasswordRequest, request: Request) -> dict[str,
     return {"message": "Password updated. Sign in with your new password."}
 ```
 
-- [ ] **Step 6: Frontend reset page**
+- [x] **Step 6: Frontend reset page**
 
 Create `frontend/app/(auth)/reset-password/page.tsx`:
 
@@ -2058,7 +2058,7 @@ Add to `frontend/lib/auth/api.ts`:
   }) => post<{ message: string }>("/reset-password", b),
 ```
 
-- [ ] **Step 7: Run tests**
+- [x] **Step 7: Run tests**
 
 ```bash
 $PY -m pytest tests/test_password_reset.py -q
@@ -2066,7 +2066,7 @@ $PY -m pytest tests/test_auth_security_audit.py tests/test_auth_complete.py -q
 cd frontend && pnpm test && pnpm build
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add database/migrations/009_password_reset_tokens.sql api/routes/users.py api/routes/auth.py \

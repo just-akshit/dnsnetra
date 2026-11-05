@@ -132,3 +132,4 @@ def test_reset_password_mismatched_passwords(mk_user, admin_headers):
     )
     assert res.status_code == 400
     assert "match" in res.json().get("detail", "").lower()
+

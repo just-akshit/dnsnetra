@@ -95,3 +95,4 @@ describe("ResetPasswordPage", () => {
     expect(screen.getByText(/Password updated successfully/i)).toBeInTheDocument()
   })
 })
+

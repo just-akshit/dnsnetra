@@ -210,6 +210,7 @@ function CreateUserDialog({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
+    setError(null)
     try {
       await usersApi.create({ username, password, role, status: "ACTIVE" })
       setOpen(false)
@@ -239,7 +240,19 @@ function CreateUserDialog({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="new-password">Temporary password</Label>
-            <Input id="new-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <Input
+              id="new-password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={8}
+              maxLength={128}
+              autoComplete="new-password"
+            />
+            <p className="text-xs text-muted-foreground">
+              At least 8 characters, including a letter and a number or symbol.
+            </p>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>Role</Label>
@@ -252,7 +265,7 @@ function CreateUserDialog({
               </SelectContent>
             </Select>
           </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
             <Button type="submit">Create</Button>
           </DialogFooter>

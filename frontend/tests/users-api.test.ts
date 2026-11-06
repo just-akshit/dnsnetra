@@ -14,7 +14,7 @@ function ok(body: unknown) {
 }
 
 /** Returns a rejected fetch mock with the given status and detail message. */
-function err(status: number, detail = "error") {
+function err(status: number, detail: unknown = "error") {
   return vi.spyOn(globalThis, "fetch").mockResolvedValue(
     new Response(JSON.stringify({ detail }), { status })
   )
@@ -54,6 +54,18 @@ describe("usersApi", () => {
     err(422, "Username already taken")
     await expect(usersApi.create({ username: "x", password: "p", role: "ANALYST", status: "ACTIVE" }))
       .rejects.toThrow("Username already taken")
+  })
+
+  it("turns FastAPI validation detail arrays into readable messages", async () => {
+    err(422, [
+      {
+        type: "string_too_short",
+        loc: ["body", "password"],
+        msg: "String should have at least 8 characters",
+      },
+    ])
+    await expect(usersApi.create({ username: "x", password: "p", role: "ANALYST", status: "ACTIVE" }))
+      .rejects.toThrow("password: String should have at least 8 characters")
   })
 
   it("falls back to generic message when detail is missing", async () => {

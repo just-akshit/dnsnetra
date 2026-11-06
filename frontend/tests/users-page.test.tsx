@@ -220,6 +220,14 @@ describe("UsersPage", () => {
     }))
   })
 
+  it("guides the user to a valid temporary password", async () => {
+    render(<UsersPage />)
+    fireEvent.click(screen.getByRole("button", { name: /create user/i }))
+
+    expect(screen.getByLabelText(/temporary password/i)).toHaveAttribute("minlength", "8")
+    expect(screen.getByText(/at least 8 characters/i)).toBeInTheDocument()
+  })
+
   it("shows a one-time reset code", async () => {
     mockUser.current = { id: 1, username: "root", role: "SUPER_ADMIN" }
     mockList.mockResolvedValue(listOf(activeUser()))

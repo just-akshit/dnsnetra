@@ -49,6 +49,26 @@ export class AdminApiError extends Error {
   }
 }
 
+/** Turn FastAPI's `detail` value (string or validation-error array) into readable text. */
+function detailText(detail: unknown): string {
+  if (typeof detail === "string") return detail
+  if (Array.isArray(detail)) {
+    return detail
+      .map((entry) => {
+        if (!entry || typeof entry !== "object") return ""
+        const msg = "msg" in entry ? String(entry.msg) : ""
+        const loc = "loc" in entry && Array.isArray(entry.loc)
+          ? entry.loc.filter((part: unknown) => typeof part === "string" || typeof part === "number").slice(-1)[0]
+          : undefined
+        if (!msg) return ""
+        return loc ? `${String(loc)}: ${msg}` : msg
+      })
+      .filter(Boolean)
+      .join(". ")
+  }
+  return ""
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${getActiveApiBase()}${path}`, {
     credentials: "include",
@@ -62,7 +82,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   })
   const body = await res.json().catch(() => ({}))
   if (!res.ok) {
-    throw new AdminApiError(res.status, body?.detail ?? `Request failed (${res.status})`)
+    const detail = detailText(body?.detail)
+    throw new AdminApiError(res.status, detail || `Request failed (${res.status})`)
   }
   return body as T
 }

@@ -8,7 +8,7 @@
 
 import { getActiveApiBase } from "@/lib/auth/api"
 
-export type UserRole = "ADMIN" | "ANALYST" | "SUPPORT"
+export type UserRole = "SUPER_ADMIN" | "ADMIN" | "ANALYST" | "SUPPORT"
 export type UserStatus = "PENDING" | "ACTIVE" | "DISABLED"
 
 export interface AdminUser {
@@ -29,6 +29,17 @@ export interface UserListResponse {
   limit: number
   offset: number
   items: AdminUser[]
+}
+
+export interface ResetPasswordResponse {
+  username: string
+  temporary_password: string
+  must_change_password: boolean
+}
+
+export interface ResetCodeResponse {
+  code: string
+  expires_at: string
 }
 
 export class AdminApiError extends Error {
@@ -90,11 +101,13 @@ export const usersApi = {
   enable: (id: number) =>
     request<{ message: string }>(`/api/v1/users/${id}/enable`, { method: "POST" }),
 
-  resetPassword: (id: number, newPassword: string) =>
-    request<{ message: string }>(`/api/v1/users/${id}/reset-password`, {
+  resetPassword: (id: number) =>
+    request<ResetPasswordResponse>(`/api/v1/users/${id}/reset-password`, {
       method: "POST",
-      body: JSON.stringify({ new_password: newPassword }),
     }),
+
+  resetCode: (id: number) =>
+    request<ResetCodeResponse>(`/api/v1/users/${id}/reset-code`, { method: "POST" }),
 
   revokeSessions: (id: number) =>
     request<{ message: string; revoked_count: number }>(`/api/v1/users/${id}/revoke-sessions`, {

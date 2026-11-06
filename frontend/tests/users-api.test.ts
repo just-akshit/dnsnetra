@@ -121,12 +121,28 @@ describe("usersApi", () => {
 
   // ── resetPassword ────────────────────────────────────────────────────────────
 
-  it("resetPassword sends POST with new_password in body", async () => {
-    const fetchMock = ok({ message: "reset" })
-    await usersApi.resetPassword(9, "NewPass123!")
+  it("resetPassword sends no body and returns the one-time password", async () => {
+    const fetchMock = ok({
+      username: "u",
+      temporary_password: "Tmp123!",
+      must_change_password: true,
+    })
+    const result = await usersApi.resetPassword(9)
     const init = fetchMock.mock.calls[0][1] as RequestInit
     expect(String(fetchMock.mock.calls[0][0])).toContain("/api/v1/users/9/reset-password")
-    expect(JSON.parse(init.body as string)).toEqual({ new_password: "NewPass123!" })
+    expect(init.method).toBe("POST")
+    expect(init.body).toBeUndefined()
+    expect(result.temporary_password).toBe("Tmp123!")
+  })
+
+  // ── resetCode ────────────────────────────────────────────────────────────────
+
+  it("resetCode sends POST and returns the code", async () => {
+    const fetchMock = ok({ code: "abc123", expires_at: "2026-01-01T00:00:00Z" })
+    const result = await usersApi.resetCode(11)
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/api/v1/users/11/reset-code")
+    expect((fetchMock.mock.calls[0][1] as RequestInit).method).toBe("POST")
+    expect(result.code).toBe("abc123")
   })
 })
 

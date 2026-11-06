@@ -14,7 +14,12 @@ from api.rate_limiter import reset_rate_limits
 from api.sessions import create_session, revoke_session
 from tests.auth_testkit import TEST_PASSWORD, db
 
-SEEDED_ROLES = {"admin": "ADMIN", "analyst": "ANALYST", "support": "SUPPORT"}
+SEEDED_ROLES = {
+    "superadmin": "SUPER_ADMIN",
+    "admin": "ADMIN",
+    "analyst": "ANALYST",
+    "support": "SUPPORT",
+}
 
 # Users created by tests that must never survive a test run. `pytest_%` is
 # excluded because the session-scoped fixtures own those rows.
@@ -101,6 +106,11 @@ def _headers_for(user_id: int):
     raw_token, _ = create_session(user_id=user_id, user_agent="pytest")
     yield {"Authorization": f"Bearer {raw_token}"}
     revoke_session(raw_token)
+
+
+@pytest.fixture
+def super_headers(seeded_users):
+    yield from _headers_for(seeded_users["superadmin"])
 
 
 @pytest.fixture

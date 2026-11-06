@@ -40,6 +40,7 @@ from ..auth import (
 from ..rbac import UserRole, UserStatus, require_permission
 from ..sessions import hash_session_token, revoke_all_user_sessions
 from ..trusted_proxy import get_client_ip
+from ..user_admin_policy import ensure_can_assign_role, ensure_can_manage
 
 logger = logging.getLogger("api_users_router")
 
@@ -265,6 +266,13 @@ def create_user(
 
     clean_username = normalize_username(payload.username)
 
+    ensure_can_assign_role(
+        admin,
+        payload.role.value,
+        request=request,
+        attempted_action="create_user",
+    )
+
     # Check case-insensitive uniqueness
     if get_user_by_username(clean_username):
         raise HTTPException(
@@ -356,7 +364,7 @@ def update_user(
 
     # Prevent self-demotion or self-disablement
     if user_id == admin["id"]:
-        if payload.role is not None and payload.role != UserRole.ADMIN:
+        if payload.role is not None and payload.role.value != target_user["role"]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Administrators cannot demote their own account",
@@ -366,6 +374,14 @@ def update_user(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Administrators cannot disable their own account",
             )
+
+    ensure_can_manage(
+        admin,
+        target_user,
+        new_role=payload.role.value if payload.role else None,
+        request=request,
+        attempted_action="update_user",
+    )
 
     target_role = target_user["role"]
     target_status = target_user["status"]
@@ -495,6 +511,14 @@ def approve_user(
             detail="Only PENDING accounts can be approved",
         )
 
+    ensure_can_manage(
+        admin,
+        target_user,
+        new_role=payload.role.value,
+        request=request,
+        attempted_action="approve_user",
+    )
+
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -573,6 +597,13 @@ def disable_user(
             detail="Administrators cannot disable their own account",
         )
 
+    ensure_can_manage(
+        admin,
+        target_user,
+        request=request,
+        attempted_action="disable_user",
+    )
+
     with get_connection() as conn:
         with conn.cursor() as cur:
             # Enforce Last Active Admin Protection inside transaction
@@ -631,6 +662,13 @@ def enable_user(
             detail=f"User with ID {user_id} not found",
         )
 
+    ensure_can_manage(
+        admin,
+        target_user,
+        request=request,
+        attempted_action="enable_user",
+    )
+
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -683,6 +721,13 @@ def reset_password(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"User with ID {user_id} not found",
         )
+
+    ensure_can_manage(
+        admin,
+        target_user,
+        request=request,
+        attempted_action="reset_password",
+    )
 
     pw_valid, pw_err = validate_password_strength(payload.new_password, username=target_user["username"])
     if not pw_valid:
@@ -744,6 +789,14 @@ def revoke_sessions(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"User with ID {user_id} not found",
+        )
+
+    if user_id != admin["id"]:
+        ensure_can_manage(
+            admin,
+            target_user,
+            request=request,
+            attempted_action="revoke_sessions",
         )
 
     revoked_count = revoke_all_user_sessions(user_id)
@@ -811,6 +864,13 @@ def issue_reset_code(
     target = get_user_by_id(user_id)
     if not target:
         raise HTTPException(status_code=404, detail=f"User with ID {user_id} not found")
+
+    ensure_can_manage(
+        admin,
+        target,
+        request=request,
+        attempted_action="issue_reset_code",
+    )
 
     code = secrets.token_urlsafe(9)
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)

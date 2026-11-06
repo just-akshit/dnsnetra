@@ -1,6 +1,6 @@
 # SUPER_ADMIN Role and Admin Password Reset Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Add a `SUPER_ADMIN` role with a backend-enforced role hierarchy and a server-generated temporary-password reset flow, without changing the opaque-session, Argon2id, CSRF, CAPTCHA, or audit model.
 
@@ -89,7 +89,7 @@ These assertions encode the pre-SUPER_ADMIN behavior and must be rewritten, not 
 **Interfaces:**
 - Produces: `UserRole.SUPER_ADMIN`; `get_role_permissions("SUPER_ADMIN")` is a superset of `get_role_permissions("ADMIN")`; DB accepts `SUPER_ADMIN`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_role_hierarchy.py
@@ -118,12 +118,12 @@ def test_database_role_constraint_allows_super_admin():
 
 > The third test is a placeholder for the constraint only; delete it if it adds no value. The first two are the real gates.
 
-- [ ] **Step 2: Run red**
+- [x] **Step 2: Run red**
 
 Run: `.venv/bin/python -m pytest tests/test_role_hierarchy.py -q`
 Expected: FAIL — `UserRole` has no `SUPER_ADMIN`, constraint lacks it.
 
-- [ ] **Step 3: Write the migration**
+- [x] **Step 3: Write the migration**
 
 `database/migrations/010_super_admin_role.sql`:
 
@@ -142,7 +142,7 @@ Apply with the project runner, not `-m database.migrate`:
 .venv/bin/python database/migrate.py
 ```
 
-- [ ] **Step 4: Add the role and permissions**
+- [x] **Step 4: Add the role and permissions**
 
 `api/rbac.py`:
 
@@ -166,12 +166,12 @@ ROLE_PERMISSIONS[UserRole.SUPER_ADMIN.value] = set(
 
 Update the module docstring to list all four roles.
 
-- [ ] **Step 5: Run green**
+- [x] **Step 5: Run green**
 
 Run: `.venv/bin/python -m pytest tests/test_role_hierarchy.py -q`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add database/migrations/010_super_admin_role.sql api/rbac.py tests/test_role_hierarchy.py
@@ -194,7 +194,7 @@ git commit -m "feat(rbac): add SUPER_ADMIN role and widen role constraint"
   - `ensure_can_manage(actor, target, *, request, attempted_action, new_role=None) -> None` (raises 403 and audit-logs denials)
   - `ensure_can_assign_role(actor, new_role, *, request, attempted_action) -> None`
 
-- [ ] **Step 1: Write the failing unit tests**
+- [x] **Step 1: Write the failing unit tests**
 
 Append to `tests/test_role_hierarchy.py`:
 
@@ -249,12 +249,12 @@ def test_admin_cannot_promote_staff_to_admin():
     assert not ok
 ```
 
-- [ ] **Step 2: Run red**
+- [x] **Step 2: Run red**
 
 Run: `.venv/bin/python -m pytest tests/test_role_hierarchy.py -q`
 Expected: FAIL — `api.user_admin_policy` does not exist.
 
-- [ ] **Step 3: Implement the policy module**
+- [x] **Step 3: Implement the policy module**
 
 `api/user_admin_policy.py`:
 
@@ -379,12 +379,12 @@ Add to `api/audit.py` inside `AuditAction`:
     PASSWORD_RESET_COMPLETED = "PASSWORD_RESET_COMPLETED"
 ```
 
-- [ ] **Step 4: Run green**
+- [x] **Step 4: Run green**
 
 Run: `.venv/bin/python -m pytest tests/test_role_hierarchy.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add api/user_admin_policy.py api/audit.py tests/test_role_hierarchy.py
@@ -403,7 +403,7 @@ git commit -m "feat(rbac): add a single role-hierarchy policy helper"
 - Consumes: `ensure_can_manage`, `ensure_can_assign_role` from Task 2.
 - Produces: every lifecycle route returns 403 for an out-of-hierarchy actor and writes an `AUTHORIZATION_DENIED` audit row.
 
-- [ ] **Step 1: Write the failing route matrix**
+- [x] **Step 1: Write the failing route matrix**
 
 Append to `tests/test_role_hierarchy.py`:
 
@@ -455,12 +455,12 @@ def test_create_matrix(mk_user, actor_role, new_role):
 
 Use `from api.user_admin_policy import MANAGEABLE_ROLES` at the top of the test file.
 
-- [ ] **Step 2: Run red**
+- [x] **Step 2: Run red**
 
 Run: `.venv/bin/python -m pytest tests/test_role_hierarchy.py -q`
 Expected: FAIL — `ADMIN` can currently create/manage `ADMIN`, so several matrix rows return 200/201 instead of 403.
 
-- [ ] **Step 3: Add shared test helpers**
+- [x] **Step 3: Add shared test helpers**
 
 In `tests/auth_testkit.py`, add:
 
@@ -502,7 +502,7 @@ def super_headers():
     db("DELETE FROM dashboard_users WHERE id = %s", (uid,))
 ```
 
-- [ ] **Step 4: Wire the routes**
+- [x] **Step 4: Wire the routes**
 
 In `api/routes/users.py`, add the import:
 
@@ -586,7 +586,7 @@ ensure_can_manage(admin, target, request=request, attempted_action="issue_reset_
 
 Also update the route summary/docstrings from "Admin only" to "ADMIN / SUPER_ADMIN" where relevant.
 
-- [ ] **Step 5: Run green and the existing auth suite**
+- [x] **Step 5: Run green and the existing auth suite**
 
 Run:
 
@@ -597,7 +597,7 @@ Run:
 
 Expected: the new matrix passes. Two legacy tests now fail **by design** (see "Behavior changes"): `test_admin_creates_admin_and_role_change` and `test_two_admins_can_manage_each_other_safely`. Rewrite them in Step 6.
 
-- [ ] **Step 6: Rewrite the two legacy tests**
+- [x] **Step 6: Rewrite the two legacy tests**
 
 `tests/test_auth_complete.py::test_admin_creates_admin_and_role_change` becomes two tests:
 
@@ -662,7 +662,7 @@ def test_super_admin_can_manage_another_admin(mk_user):
 
 Import `auth_headers_for` from `tests.auth_testkit` in `test_auth_hardening.py`.
 
-- [ ] **Step 7: Run green**
+- [x] **Step 7: Run green**
 
 ```bash
 .venv/bin/python -m pytest tests/test_role_hierarchy.py tests/test_auth_security_audit.py tests/test_auth_complete.py tests/test_auth_hardening.py tests/test_users_admin.py tests/test_password_reset.py -q
@@ -670,7 +670,7 @@ Import `auth_headers_for` from `tests.auth_testkit` in `test_auth_hardening.py`.
 
 Expected: all pass. If `test_users_admin.py` still fails it is because Task 4 has not changed the reset contract yet; defer that single test to Task 4.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add api/routes/users.py tests/auth_testkit.py tests/conftest.py tests/test_role_hierarchy.py tests/test_auth_complete.py tests/test_auth_hardening.py
@@ -700,7 +700,7 @@ git commit -m "feat(users): enforce the role hierarchy on every management route
 
 - Response headers include `Cache-Control: no-store, max-age=0` and `Pragma: no-cache`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_role_hierarchy.py`:
 
@@ -762,12 +762,12 @@ def test_denied_reset_writes_audit_for_admin_targeting_super_admin(mk_user):
 
 Add `from tests.auth_testkit import auth_headers_for` and `_login_body` to the imports from `tests.test_auth_security_audit`. Reuse the existing `_login_body` helper.
 
-- [ ] **Step 2: Run red**
+- [x] **Step 2: Run red**
 
 Run: `.venv/bin/python -m pytest tests/test_role_hierarchy.py -k reset -q`
 Expected: FAIL — endpoint still expects a body / returns `message`.
 
-- [ ] **Step 3: Add the generator**
+- [x] **Step 3: Add the generator**
 
 In `api/auth.py`, add `import string` and:
 
@@ -786,7 +786,7 @@ def generate_temporary_password(length: int = 20) -> str:
     raise RuntimeError("could not generate a policy-compliant temporary password")
 ```
 
-- [ ] **Step 4: Replace the reset endpoint**
+- [x] **Step 4: Replace the reset endpoint**
 
 In `api/routes/users.py`:
 
@@ -875,11 +875,11 @@ def reset_password(
 
 Add `generate_temporary_password` to the `..auth` import block, and add `Response` to the `fastapi` import (`from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status`).
 
-- [ ] **Step 5: Add no-store to the reset-code response too**
+- [x] **Step 5: Add no-store to the reset-code response too**
 
 `issue_reset_code` also returns a secret. Add a `response: Response` parameter and the same two headers before returning.
 
-- [ ] **Step 6: Update the legacy test**
+- [x] **Step 6: Update the legacy test**
 
 `tests/test_users_admin.py::test_admin_reset_user_password` becomes a SUPER_ADMIN-actor test:
 
@@ -895,7 +895,7 @@ def test_super_admin_resets_user_password(mk_user, super_headers):
 
 The `super_headers` fixture was added to `tests/conftest.py` in Task 3; use it here so its audit rows are cleaned up on teardown.
 
-- [ ] **Step 7: Run green**
+- [x] **Step 7: Run green**
 
 ```bash
 .venv/bin/python -m pytest tests/test_role_hierarchy.py tests/test_users_admin.py tests/test_auth_complete.py tests/test_auth_hardening.py tests/test_password_reset.py -q
@@ -903,7 +903,7 @@ The `super_headers` fixture was added to `tests/conftest.py` in Task 3; use it h
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add api/auth.py api/routes/users.py tests/test_role_hierarchy.py tests/test_users_admin.py tests/auth_testkit.py
@@ -922,7 +922,7 @@ git commit -m "feat(users): generate one-time temporary passwords on reset"
 - Produces: `_lock_active_principals(cur) -> list[tuple[int, str]]` and `_ensure_principal_remains(cur, target_role, target_id)`.
 - Rule: never remove the last active `SUPER_ADMIN`; never remove the last active `ADMIN` when no active `SUPER_ADMIN` exists.
 
-- [ ] **Step 1: Write the failing unit test**
+- [x] **Step 1: Write the failing unit test**
 
 The HTTP path cannot reach the guard (the only actor who could demote the last SUPER_ADMIN is that same SUPER_ADMIN, and self-management is denied). Test the helper with a fake cursor:
 
@@ -966,12 +966,12 @@ def test_one_of_two_super_admins_may_be_removed():
     _ensure_principal_remains(cur, "SUPER_ADMIN", 10)
 ```
 
-- [ ] **Step 2: Run red**
+- [x] **Step 2: Run red**
 
 Run: `.venv/bin/python -m pytest tests/test_role_hierarchy.py -k "last_" -q`
 Expected: FAIL — helper does not exist / only counts `ADMIN`.
 
-- [ ] **Step 3: Replace the guard**
+- [x] **Step 3: Replace the guard**
 
 In `api/routes/users.py`:
 
@@ -1029,7 +1029,7 @@ will_demote = role_changed and ROLE_RANK[new_role.value] < ROLE_RANK[target_role
 
 Import `ROLE_RANK` from `..user_admin_policy`.
 
-- [ ] **Step 4: Run green**
+- [x] **Step 4: Run green**
 
 ```bash
 .venv/bin/python -m pytest tests/test_role_hierarchy.py -q
@@ -1038,7 +1038,7 @@ Import `ROLE_RANK` from `..user_admin_policy`.
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add api/routes/users.py tests/test_role_hierarchy.py
@@ -1058,7 +1058,7 @@ git commit -m "fix(users): protect the last active SUPER_ADMIN and ADMIN"
 - `rotate_admin_password.py` accepts `ADMIN` or `SUPER_ADMIN` and writes an audit row with `metadata={"actor": "system/cli"}`.
 - `create_super_admin.py --username NAME [--execute]` returns exit 0 on dry run and on success; exit 1 if the username exists or is invalid.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_admin_scripts.py
@@ -1104,12 +1104,12 @@ def test_create_super_admin_execute_writes_role_and_audit():
         _db("DELETE FROM dashboard_users WHERE username = %s", (name,))
 ```
 
-- [ ] **Step 2: Run red**
+- [x] **Step 2: Run red**
 
 Run: `.venv/bin/python -m pytest tests/test_admin_scripts.py -q`
 Expected: FAIL — module missing.
 
-- [ ] **Step 3: Implement `create_super_admin.py`**
+- [x] **Step 3: Implement `create_super_admin.py`**
 
 ```python
 """Bootstrap the first SUPER_ADMIN.
@@ -1208,7 +1208,7 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 4: Update the rotation script**
+- [x] **Step 4: Update the rotation script**
 
 In `scripts/rotate_admin_password.py`:
 
@@ -1237,7 +1237,7 @@ Replace the local `generate_temporary_password` with the imported one, allow bot
 
 Update the error text to say "not an ADMIN or SUPER_ADMIN".
 
-- [ ] **Step 5: Run green**
+- [x] **Step 5: Run green**
 
 ```bash
 .venv/bin/python -m pytest tests/test_admin_scripts.py -q
@@ -1246,7 +1246,7 @@ Update the error text to say "not an ADMIN or SUPER_ADMIN".
 
 Expected: tests pass; dry run prints `would create` and exits 0.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/create_super_admin.py scripts/rotate_admin_password.py tests/test_admin_scripts.py
@@ -1269,7 +1269,7 @@ git commit -m "feat(scripts): add SUPER_ADMIN bootstrap and audit CLI rotations"
 - `usersApi.resetPassword(id)` → `POST` with **no body**, returns `{username, temporary_password, must_change_password}`.
 - `usersApi.resetCode(id)` → `{code, expires_at}`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `frontend/tests/permissions.test.ts`:
 
@@ -1315,12 +1315,12 @@ it("resetPassword sends no body and returns the one-time password", async () => 
 })
 ```
 
-- [ ] **Step 2: Run red**
+- [x] **Step 2: Run red**
 
 Run: `cd frontend && pnpm vitest run tests/permissions.test.ts tests/users-api.test.ts`
 Expected: FAIL — module missing / old signature.
 
-- [ ] **Step 3: Implement the mirror**
+- [x] **Step 3: Implement the mirror**
 
 `frontend/lib/admin/permissions.ts`:
 
@@ -1367,12 +1367,12 @@ export interface ResetPasswordResponse {
     }),
 ```
 
-- [ ] **Step 4: Run green**
+- [x] **Step 4: Run green**
 
 Run: `cd frontend && pnpm vitest run tests/permissions.test.ts tests/users-api.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/lib/admin/permissions.ts frontend/tests/permissions.test.ts frontend/lib/admin/users-api.ts frontend/tests/users-api.test.ts
@@ -1391,7 +1391,7 @@ git commit -m "feat(admin): mirror the role hierarchy in the users API client"
 - Consumes: `canManage`, `assignableRoles`, `usersApi.resetPassword`, `usersApi.resetCode`.
 - Produces: role-aware action buttons; a reset dialog that shows the generated password exactly once.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Update the mock in `frontend/tests/users-page.test.tsx` to include `resetPassword` and `resetCode`, and add:
 
@@ -1432,12 +1432,12 @@ it("offers only assignable roles in the create dialog", async () => {
 
 Update the test-file import to `import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"`.
 
-- [ ] **Step 2: Run red**
+- [x] **Step 2: Run red**
 
 Run: `cd frontend && pnpm vitest run tests/users-page.test.tsx`
 Expected: FAIL — old UI renders an admin-chosen password form.
 
-- [ ] **Step 3: Update the page**
+- [x] **Step 3: Update the page**
 
 Key changes:
 
@@ -1607,12 +1607,12 @@ function ChangeRoleDialog({ user, roles, disabled, onDone }: {
 
 The list must exclude the target's current role from the "changed" path only if the backend rejects a no-op; it does not (no-op returns 200), so leaving it is fine.
 
-- [ ] **Step 4: Run green**
+- [x] **Step 4: Run green**
 
 Run: `cd frontend && pnpm vitest run tests/users-page.test.tsx`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add "frontend/app/(dashboard)/users/page.tsx" frontend/tests/users-page.test.tsx
@@ -1627,7 +1627,7 @@ git commit -m "feat(admin): show hierarchy-aware reset actions on the users page
 - Modify: `frontend/components/app-sidebar.tsx:173`
 - Modify: `frontend/tests/app-sidebar.test.tsx`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```tsx
 it("shows Users to SUPER_ADMIN", () => {
@@ -1637,23 +1637,23 @@ it("shows Users to SUPER_ADMIN", () => {
 })
 ```
 
-- [ ] **Step 2: Run red**
+- [x] **Step 2: Run red**
 
 Run: `cd frontend && pnpm vitest run tests/app-sidebar.test.tsx`
 Expected: FAIL — only `ADMIN` is gated.
 
-- [ ] **Step 3: Update the gate**
+- [x] **Step 3: Update the gate**
 
 ```tsx
 {(user?.role === "ADMIN" || user?.role === "SUPER_ADMIN") && navAdmin.map((item) => (
 ```
 
-- [ ] **Step 4: Run green**
+- [x] **Step 4: Run green**
 
 Run: `cd frontend && pnpm vitest run tests/app-sidebar.test.tsx`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/components/app-sidebar.tsx frontend/tests/app-sidebar.test.tsx
@@ -1668,7 +1668,7 @@ git commit -m "feat(admin): show the users nav entry to SUPER_ADMIN"
 - Modify: `deploy/README.md`
 - Modify: `docs/superpowers/plans/2026-11-03-auth-authz-phase2.md` (mark the new reset contract)
 
-- [ ] **Step 1: Document the migration/bootstrap order**
+- [x] **Step 1: Document the migration/bootstrap order**
 
 Add to `deploy/README.md`:
 
@@ -1690,7 +1690,7 @@ Until step 4 runs, no account can manage an ADMIN.
 
 Also add `password_reset_tokens` to the Task 16 backup table list.
 
-- [ ] **Step 2: Run the full backend suite**
+- [x] **Step 2: Run the full backend suite**
 
 ```bash
 .venv/bin/python -m pytest tests/ -q
@@ -1698,7 +1698,7 @@ Also add `password_reset_tokens` to the Task 16 backup table list.
 
 Expected: the same 29 dataset-drift failures and **no new failures**. Compare against the recorded baseline; any new failure is a regression.
 
-- [ ] **Step 3: Run the frontend suite and build**
+- [x] **Step 3: Run the frontend suite and build**
 
 ```bash
 cd frontend
@@ -1724,7 +1724,7 @@ Log in as each actor and record the result:
 
 For each allowed reset: confirm the target is signed out, the temp password works, and any other route returns HTTP 428 until `/change-password` completes. Close the modal and confirm the password is gone from the DOM.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add deploy/README.md docs/superpowers/plans/2026-11-03-auth-authz-phase2.md

@@ -1653,6 +1653,12 @@ git commit -m "feat(admin): gate user management navigation by role"
 
 ### Task 13 (T10): One-time-code password reset — **decision gate**
 
+> **Update (2026-11-06):** the admin-chosen `POST /users/{id}/reset-password`
+> body was replaced by a server-generated temporary password (returned once,
+> `Cache-Control: no-store`). The one-time-code flow below remains the
+> user-chosen alternative and now has an admin UI trigger. See
+> `docs/superpowers/plans/2026-11-06-super-admin-role.md`.
+
 **Decision required before starting:** approve Option A (admin-issued code, no email). If you prefer emailed links, stop and write a separate plan; this task assumes Option A.
 
 **Files:**

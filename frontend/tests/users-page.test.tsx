@@ -11,6 +11,7 @@ const {
   mockDisable,
   mockEnable,
   mockRevokeSessions,
+  mockCreate,
   mockResetPassword,
   mockResetCode,
   mockUpdate,
@@ -30,6 +31,7 @@ const {
     mockDisable: vi.fn(),
     mockEnable: vi.fn(),
     mockRevokeSessions: vi.fn(),
+    mockCreate: vi.fn(),
     mockResetPassword: vi.fn(),
     mockResetCode: vi.fn(),
     mockUpdate: vi.fn(),
@@ -45,6 +47,7 @@ vi.mock("@/lib/admin/users-api", () => ({
     disable: (...args: unknown[]) => mockDisable(...args),
     enable: (...args: unknown[]) => mockEnable(...args),
     revokeSessions: (...args: unknown[]) => mockRevokeSessions(...args),
+    create: (...args: unknown[]) => mockCreate(...args),
     resetPassword: (...args: unknown[]) => mockResetPassword(...args),
     resetCode: (...args: unknown[]) => mockResetCode(...args),
     update: (...args: unknown[]) => mockUpdate(...args),
@@ -79,6 +82,7 @@ describe("UsersPage", () => {
     mockDisable.mockResolvedValue({ message: "disabled" })
     mockEnable.mockResolvedValue({ message: "enabled" })
     mockRevokeSessions.mockResolvedValue({ message: "revoked", revoked_count: 1 })
+    mockCreate.mockResolvedValue({ message: "created" })
     mockResetPassword.mockResolvedValue({
       username: "alice",
       temporary_password: "TmpPass123!",
@@ -198,6 +202,22 @@ describe("UsersPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Close dialog" }))
     expect(screen.queryByText("TmpPass123!")).not.toBeInTheDocument()
+  })
+
+  it("submits the create form", async () => {
+    render(<UsersPage />)
+    fireEvent.click(screen.getByRole("button", { name: /create user/i }))
+    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: "bob" } })
+    fireEvent.change(screen.getByLabelText(/temporary password/i), {
+      target: { value: "Pwd123!" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Create" }))
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledWith({
+      username: "bob",
+      password: "Pwd123!",
+      role: "ANALYST",
+      status: "ACTIVE",
+    }))
   })
 
   it("shows a one-time reset code", async () => {

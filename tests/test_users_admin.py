@@ -120,9 +120,11 @@ def test_admin_reset_user_password(admin_headers, mk_user):
     res = client.post(
         f"/api/v1/users/{uid}/reset-password",
         headers=admin_headers,
-        json={"new_password": "NewAdminResetPass123!"},
     )
     assert res.status_code == 200
+    body = res.json()
+    assert body["username"] == username
+    assert body["temporary_password"]
 
     detail = client.get(f"/api/v1/users/{uid}", headers=admin_headers).json()
     assert detail["must_change_password"] is True

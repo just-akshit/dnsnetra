@@ -133,3 +133,11 @@ def test_reset_password_mismatched_passwords(mk_user, admin_headers):
     assert res.status_code == 400
     assert "match" in res.json().get("detail", "").lower()
 
+
+
+def test_reset_code_response_is_not_cacheable(mk_user, admin_headers):
+    _, uid = mk_user("resetnocache")
+    res = _client().post(f"/api/v1/users/{uid}/reset-code", headers=admin_headers)
+    assert res.status_code == 200
+    assert res.headers["cache-control"].startswith("no-store")
+    assert res.headers["pragma"] == "no-cache"

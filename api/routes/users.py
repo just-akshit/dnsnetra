@@ -24,12 +24,13 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field
 
 from labeler.intel.reputation.connection import get_connection
 from ..audit import AuditAction, get_audit_logs, log_audit_event
 from ..auth import (
+    generate_temporary_password,
     get_user_by_id,
     get_user_by_username,
     hash_password,
@@ -88,8 +89,10 @@ class ApproveUserRequest(BaseModel):
     role: UserRole = UserRole.ANALYST
 
 
-class ResetPasswordRequest(BaseModel):
-    new_password: str = Field(..., min_length=8, max_length=128)
+class ResetPasswordResponse(BaseModel):
+    username: str
+    temporary_password: str
+    must_change_password: bool = True
 
 
 class GenericMessageResponse(BaseModel):
@@ -703,16 +706,20 @@ def enable_user(
 
 @router.post(
     "/{user_id}/reset-password",
-    response_model=GenericMessageResponse,
-    summary="Reset user password (Admin only)",
-    description="Sets a new Argon2id password for target user, marks must_change_password=true, and invalidates all existing sessions.",
+    response_model=ResetPasswordResponse,
+    summary="Reset user password (Admin / SUPER_ADMIN only)",
+    description=(
+        "Generates a one-time temporary password server-side, forces a password "
+        "change at next login, and revokes every active session for the target. "
+        "The password is returned once and never stored or logged in plaintext."
+    ),
 )
 def reset_password(
     user_id: int,
-    payload: ResetPasswordRequest,
     request: Request,
+    response: Response,
     admin: dict[str, Any] = Depends(require_permission("users:update")),
-) -> GenericMessageResponse:
+) -> ResetPasswordResponse:
     client_ip, user_agent = _extract_client_meta(request)
 
     target_user = get_user_by_id(user_id)
@@ -729,11 +736,7 @@ def reset_password(
         attempted_action="reset_password",
     )
 
-    pw_valid, pw_err = validate_password_strength(payload.new_password, username=target_user["username"])
-    if not pw_valid:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=pw_err)
-
-    new_hash = hash_password(payload.new_password)
+    temporary_password = generate_temporary_password(20)
 
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -746,7 +749,7 @@ def reset_password(
                     updated_at = NOW()
                 WHERE id = %s;
                 """,
-                (new_hash, user_id),
+                (hash_password(temporary_password), user_id),
             )
             conn.commit()
 
@@ -759,11 +762,20 @@ def reset_password(
         target_user_id=user_id,
         ip_address=client_ip,
         user_agent=user_agent,
+        metadata={
+            "outcome": "success",
+            "target_username": target_user["username"],
+            "sessions_revoked": True,
+        },
     )
 
-    return GenericMessageResponse(
-        message=f"Password for user '{target_user['username']}' was successfully reset. All active sessions invalidated.",
-        user_id=user_id,
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+
+    return ResetPasswordResponse(
+        username=target_user["username"],
+        temporary_password=temporary_password,
+        must_change_password=True,
     )
 
 
@@ -859,6 +871,7 @@ def list_audit_logs(
 def issue_reset_code(
     user_id: int,
     request: Request,
+    response: Response,
     admin: dict[str, Any] = Depends(require_permission("users:update")),
 ) -> ResetCodeResponse:
     target = get_user_by_id(user_id)
@@ -891,11 +904,15 @@ def issue_reset_code(
             conn.commit()
 
     log_audit_event(
-        action="PASSWORD_RESET_CODE_ISSUED",
+        action=AuditAction.PASSWORD_RESET_CODE_ISSUED,
         user_id=admin["id"],
         target_user_id=user_id,
         ip_address=get_client_ip(request),
         user_agent=request.headers.get("user-agent"),
         metadata={},
     )
+
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+
     return ResetCodeResponse(code=code, expires_at=expires_at)

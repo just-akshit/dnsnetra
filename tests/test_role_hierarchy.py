@@ -110,11 +110,7 @@ def test_management_matrix(mk_user, actor_role, target_role, action):
     elif action == "deactivate":
         res = client.post(f"/api/v1/users/{target_id}/disable", headers=headers)
     else:
-        res = client.post(
-            f"/api/v1/users/{target_id}/reset-password",
-            json={"new_password": "ResetPass123!"},
-            headers=headers,
-        )
+        res = client.post(f"/api/v1/users/{target_id}/reset-password", headers=headers)
 
     expected = 200 if _allowed(actor_role, target_role) else 403
     assert res.status_code == expected, res.text
@@ -178,3 +174,101 @@ def test_denied_management_writes_an_authorization_audit(mk_user):
         (admin_id, super_id),
     )
     assert ("AUTHORIZATION_DENIED",) in rows
+
+
+# ---------------------------------------------------------------------------
+# Server-generated temporary password reset
+# ---------------------------------------------------------------------------
+
+from tests.auth_testkit import session_token_from_client
+from tests.test_auth_security_audit import _login_body
+
+
+def test_reset_returns_a_generated_password_once(mk_user):
+    _, super_id = mk_user("superreset", role="SUPER_ADMIN")
+    username, target_id = mk_user("resettarget", role="ANALYST")
+    headers = auth_headers_for(super_id)
+
+    res = _client().post(f"/api/v1/users/{target_id}/reset-password", headers=headers)
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["username"] == username
+    password = body["temporary_password"]
+    assert len(password) >= 16
+    assert res.headers["cache-control"].startswith("no-store")
+
+    row = _db("SELECT must_change_password FROM dashboard_users WHERE id = %s", (target_id,))
+    assert row[0][0] is True
+
+    # The old password no longer works; the new one does.
+    assert _client().post("/api/v1/auth/login", json=_login_body(username)).status_code == 401
+    login_res = _client().post(
+        "/api/v1/auth/login",
+        json=_login_body(username, password),
+    )
+    assert login_res.status_code == 200
+
+    # Audit never contains the password.
+    audit = _db(
+        "SELECT metadata::text FROM audit_logs WHERE target_user_id = %s",
+        (target_id,),
+    )
+    assert all(password not in (m or "") for (m,) in audit)
+
+
+def test_reset_rejects_self_and_writes_a_denial_audit(mk_user):
+    _, super_id = mk_user("selfreset", role="SUPER_ADMIN")
+    res = _client().post(
+        f"/api/v1/users/{super_id}/reset-password",
+        headers=auth_headers_for(super_id),
+    )
+    assert res.status_code == 403
+    rows = _db(
+        "SELECT action FROM audit_logs WHERE user_id = %s AND target_user_id = %s",
+        (super_id, super_id),
+    )
+    assert ("AUTHORIZATION_DENIED",) in rows
+
+
+def test_denied_reset_writes_audit_for_admin_targeting_super_admin(mk_user):
+    _, admin_id = mk_user("adminactor2", role="ADMIN")
+    _, super_id = mk_user("supertarget2", role="SUPER_ADMIN")
+    res = _client().post(
+        f"/api/v1/users/{super_id}/reset-password",
+        headers=auth_headers_for(admin_id),
+    )
+    assert res.status_code == 403
+    action = _db(
+        "SELECT action FROM audit_logs WHERE user_id = %s AND target_user_id = %s",
+        (admin_id, super_id),
+    )
+    assert ("AUTHORIZATION_DENIED",) in action
+
+
+def test_reset_revokes_sessions_and_forces_password_change(mk_user):
+    _, super_id = mk_user("superrevoke", role="SUPER_ADMIN")
+    username, target_id = mk_user("revoketarget", role="ANALYST")
+
+    target_client = _client()
+    assert target_client.post("/api/v1/auth/login", json=_login_body(username)).status_code == 200
+    old_token = session_token_from_client(target_client)
+
+    res = _client().post(
+        f"/api/v1/users/{target_id}/reset-password",
+        headers=auth_headers_for(super_id),
+    )
+    assert res.status_code == 200, res.text
+    temp_password = res.json()["temporary_password"]
+
+    # The pre-reset session is dead.
+    stale = target_client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {old_token}"})
+    assert stale.status_code == 401
+
+    assert (
+        target_client.post(
+            "/api/v1/auth/login",
+            json=_login_body(username, temp_password),
+        ).status_code
+        == 200
+    )
+    assert target_client.get("/api/v1/users").status_code == 428

@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import secrets
+import string
 from datetime import datetime
 from typing import Any, Optional
 
@@ -96,6 +97,20 @@ def validate_password_strength(password: str, username: Optional[str] = None) ->
     if not re.search(r"[^A-Za-z]", password):
         return False, "Password must contain at least one digit or special character"
     return True, "OK"
+
+
+_TEMP_PASSWORD_ALPHABET = string.ascii_letters + string.digits + "!@#$%^&*()-_=+"
+
+
+def generate_temporary_password(length: int = 20) -> str:
+    """Return a random password that satisfies validate_password_strength()."""
+    for _ in range(100):
+        candidate = "".join(
+            secrets.choice(_TEMP_PASSWORD_ALPHABET) for _ in range(length)
+        )
+        if validate_password_strength(candidate)[0]:
+            return candidate
+    raise RuntimeError("could not generate a policy-compliant temporary password")
 
 
 def normalize_username(username: Optional[str]) -> str:

@@ -45,5 +45,11 @@ describe("AppSidebar", () => {
     renderSidebar()
     expect(screen.getByText("Users")).toBeInTheDocument()
   })
+
+  it("shows Users to super admins", () => {
+    state.user = { username: "root", role: "SUPER_ADMIN" }
+    renderSidebar()
+    expect(screen.getByText("Users")).toBeInTheDocument()
+  })
 })
 

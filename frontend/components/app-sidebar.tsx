@@ -170,7 +170,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
-              {user?.role === "ADMIN" && navAdmin.map((item) => (
+              {(user?.role === "ADMIN" || user?.role === "SUPER_ADMIN") && navAdmin.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     isActive={pathname === item.url}

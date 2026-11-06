@@ -600,16 +600,16 @@ def test_admin_reset_password_and_revoke_sessions(admin_headers):
     # Admin resets password
     res = client.post(
         f"/api/v1/users/{target_id}/reset-password",
-        json={"new_password": "NewSecretPassword123!"},
         headers=admin_headers,
     )
     assert res.status_code == 200
+    temp_password = res.json()["temporary_password"]
 
     # Old session must now be invalidated
     assert client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {old_session}"}).status_code == 401
 
-    # Verify user can authenticate with new password
-    new_user = authenticate_user("test_reset_target", "NewSecretPassword123!")
+    # Verify user can authenticate with the generated temporary password
+    new_user = authenticate_user("test_reset_target", temp_password)
     assert new_user is not None
 
 

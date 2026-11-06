@@ -272,3 +272,50 @@ def test_reset_revokes_sessions_and_forces_password_change(mk_user):
         == 200
     )
     assert target_client.get("/api/v1/users").status_code == 428
+
+
+# ---------------------------------------------------------------------------
+# Last-principal protection
+# ---------------------------------------------------------------------------
+
+class _FakeCursor:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def execute(self, sql, params=None):
+        self.last_sql = sql
+
+    def fetchall(self):
+        return self.rows
+
+
+def test_last_super_admin_is_protected():
+    from fastapi import HTTPException
+
+    from api.routes.users import _ensure_principal_remains
+
+    cur = _FakeCursor([(10, "SUPER_ADMIN")])
+    with pytest.raises(HTTPException) as exc:
+        _ensure_principal_remains(cur, "SUPER_ADMIN", 10)
+    assert exc.value.status_code == 400
+    assert "last" in exc.value.detail.lower()
+
+
+def test_last_admin_is_protected_only_without_a_super_admin():
+    from fastapi import HTTPException
+
+    from api.routes.users import _ensure_principal_remains
+
+    cur = _FakeCursor([(10, "ADMIN")])
+    with pytest.raises(HTTPException):
+        _ensure_principal_remains(cur, "ADMIN", 10)
+
+    cur = _FakeCursor([(10, "ADMIN"), (11, "SUPER_ADMIN")])
+    _ensure_principal_remains(cur, "ADMIN", 10)  # allowed
+
+
+def test_one_of_two_super_admins_may_be_removed():
+    from api.routes.users import _ensure_principal_remains
+
+    cur = _FakeCursor([(10, "SUPER_ADMIN"), (11, "SUPER_ADMIN")])
+    _ensure_principal_remains(cur, "SUPER_ADMIN", 10)

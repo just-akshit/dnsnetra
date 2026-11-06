@@ -503,17 +503,17 @@ def test_password_reset_and_must_change_password_flow():
     # 4. Admin resets password
     res_reset = client.post(
         f"/api/v1/users/{uid}/reset-password",
-        json={"new_password": "TempPassword999!"},
         headers=headers,
     )
     assert res_reset.status_code == 200
+    temp_password = res_reset.json()["temporary_password"]
 
     # 5. Old user session is revoked
     res_old_sess = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {user_token}"})
     assert res_old_sess.status_code == 401
 
     # 6. User logs in with temporary password; must_change_password is True
-    res_new_login = _login(analyst_name, "TempPassword999!")
+    res_new_login = _login(analyst_name, temp_password)
     assert res_new_login.status_code == 200
     assert res_new_login.json()["user"]["must_change_password"] is True
     new_token = session_token_from_client(client)
@@ -522,7 +522,7 @@ def test_password_reset_and_must_change_password_flow():
     res_change = client.post(
         "/api/v1/auth/change-password",
         json={
-            "current_password": "TempPassword999!",
+            "current_password": temp_password,
             "new_password": "PermanentPass456!",
             "confirm_password": "PermanentPass456!",
         },

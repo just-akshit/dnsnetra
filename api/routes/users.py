@@ -41,7 +41,11 @@ from ..auth import (
 from ..rbac import UserRole, UserStatus, require_permission
 from ..sessions import hash_session_token, revoke_all_user_sessions
 from ..trusted_proxy import get_client_ip
-from ..user_admin_policy import ensure_can_assign_role, ensure_can_manage
+from ..user_admin_policy import (
+    ROLE_RANK,
+    ensure_can_assign_role,
+    ensure_can_manage,
+)
 
 logger = logging.getLogger("api_users_router")
 
@@ -116,24 +120,42 @@ def _extract_client_meta(request: Request) -> tuple[str, Optional[str]]:
     return client_ip, request.headers.get("user-agent")
 
 
-def _ensure_not_last_active_admin(cur, target_user_id: int) -> None:
-    """
-    Transaction-safe check ensuring an action does not leave zero active administrators.
-    Acquires exclusive row-level locks on all active admin rows (FOR UPDATE)
-    to serialize concurrent attempts and prevent race conditions.
-    """
+def _lock_active_principals(cur) -> list[tuple[int, str]]:
+    """Lock every active privileged account for the duration of the transaction."""
     cur.execute(
         """
-        SELECT id FROM dashboard_users
-        WHERE role = 'ADMIN' AND status = 'ACTIVE' AND is_active = true
+        SELECT id, role FROM dashboard_users
+        WHERE role IN ('SUPER_ADMIN', 'ADMIN')
+          AND status = 'ACTIVE'
+          AND is_active = true
+        ORDER BY id
         FOR UPDATE;
         """
     )
-    active_admins = [row[0] for row in cur.fetchall()]
-    if target_user_id in active_admins and len(active_admins) <= 1:
+    return [(row[0], row[1]) for row in cur.fetchall()]
+
+
+def _ensure_principal_remains(cur, target_role: str, target_id: int) -> None:
+    """
+    Never leave the system without a privileged principal.
+
+    The last active SUPER_ADMIN is always protected. The last active ADMIN is
+    protected only when no active SUPER_ADMIN exists to take over.
+    """
+    rows = _lock_active_principals(cur)
+    supers = [uid for uid, role in rows if role == "SUPER_ADMIN"]
+    admins = [uid for uid, role in rows if role == "ADMIN"]
+
+    if target_role == "SUPER_ADMIN" and target_id in supers and len(supers) <= 1:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Operation rejected: cannot disable or demote the last remaining active administrator.",
+            detail="Operation rejected: cannot remove the last active super administrator.",
+        )
+
+    if target_role == "ADMIN" and target_id in admins and not supers and len(admins) <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Operation rejected: cannot remove the last active administrator.",
         )
 
 
@@ -415,7 +437,10 @@ def update_user(
     if not role_changed and not status_changed:
         return UserDetail(**target_user)
 
-    will_demote = role_changed and new_role != UserRole.ADMIN
+    will_demote = (
+        role_changed
+        and ROLE_RANK.get(new_role.value, 0) < ROLE_RANK.get(target_role, 0)
+    )
     will_deactivate = status_changed and new_status != UserStatus.ACTIVE
 
     updates = []
@@ -433,9 +458,9 @@ def update_user(
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            # Transactional guard: ensure not leaving 0 active admins
+            # Transactional guard: ensure not leaving 0 privileged principals
             if will_demote or will_deactivate:
-                _ensure_not_last_active_admin(cur, user_id)
+                _ensure_principal_remains(cur, target_role, user_id)
 
             cur.execute(
                 f"""
@@ -609,8 +634,8 @@ def disable_user(
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            # Enforce Last Active Admin Protection inside transaction
-            _ensure_not_last_active_admin(cur, user_id)
+            # Enforce last-principal protection inside the transaction
+            _ensure_principal_remains(cur, target_user["role"], user_id)
 
             cur.execute(
                 """

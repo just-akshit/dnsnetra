@@ -1,28 +1,41 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import UsersPage from "@/app/(dashboard)/users/page"
 
 // ---------- shared mock state (vi.hoisted so vi.mock factories can reference) --
 
-const { MockAdminApiError, mockList, mockApprove, mockDisable, mockEnable, mockRevokeSessions, mockUser } =
-  vi.hoisted(() => {
-    const MockAdminApiError = class AdminApiError extends Error {
-      status: number
-      constructor(status: number, message: string) {
-        super(message)
-        this.status = status
-      }
+const {
+  MockAdminApiError,
+  mockList,
+  mockApprove,
+  mockDisable,
+  mockEnable,
+  mockRevokeSessions,
+  mockResetPassword,
+  mockResetCode,
+  mockUpdate,
+  mockUser,
+} = vi.hoisted(() => {
+  const MockAdminApiError = class AdminApiError extends Error {
+    status: number
+    constructor(status: number, message: string) {
+      super(message)
+      this.status = status
     }
-    return {
-      MockAdminApiError,
-      mockList: vi.fn(),
-      mockApprove: vi.fn(),
-      mockDisable: vi.fn(),
-      mockEnable: vi.fn(),
-      mockRevokeSessions: vi.fn(),
-      mockUser: { current: { username: "admin", role: "ADMIN" } },
-    }
-  })
+  }
+  return {
+    MockAdminApiError,
+    mockList: vi.fn(),
+    mockApprove: vi.fn(),
+    mockDisable: vi.fn(),
+    mockEnable: vi.fn(),
+    mockRevokeSessions: vi.fn(),
+    mockResetPassword: vi.fn(),
+    mockResetCode: vi.fn(),
+    mockUpdate: vi.fn(),
+    mockUser: { current: { id: 1, username: "admin", role: "ADMIN" } },
+  }
+})
 
 vi.mock("@/lib/admin/users-api", () => ({
   AdminApiError: MockAdminApiError,
@@ -32,6 +45,9 @@ vi.mock("@/lib/admin/users-api", () => ({
     disable: (...args: unknown[]) => mockDisable(...args),
     enable: (...args: unknown[]) => mockEnable(...args),
     revokeSessions: (...args: unknown[]) => mockRevokeSessions(...args),
+    resetPassword: (...args: unknown[]) => mockResetPassword(...args),
+    resetCode: (...args: unknown[]) => mockResetCode(...args),
+    update: (...args: unknown[]) => mockUpdate(...args),
   },
 }))
 
@@ -57,26 +73,39 @@ function listOf(...items: object[]) {
 
 describe("UsersPage", () => {
   beforeEach(() => {
-    mockUser.current = { username: "admin", role: "ADMIN" }
+    mockUser.current = { id: 1, username: "admin", role: "ADMIN" }
     mockList.mockResolvedValue(listOf(pendingUser()))
     mockApprove.mockResolvedValue({ message: "ok" })
     mockDisable.mockResolvedValue({ message: "disabled" })
     mockEnable.mockResolvedValue({ message: "enabled" })
     mockRevokeSessions.mockResolvedValue({ message: "revoked", revoked_count: 1 })
+    mockResetPassword.mockResolvedValue({
+      username: "alice",
+      temporary_password: "TmpPass123!",
+      must_change_password: true,
+    })
+    mockResetCode.mockResolvedValue({ code: "abc123", expires_at: "2026-01-01T00:00:00Z" })
+    mockUpdate.mockResolvedValue({ message: "updated" })
   })
 
   // ── access control ───────────────────────────────────────────────────────────
 
   it("shows access-denied message for non-ADMIN role", () => {
-    mockUser.current = { username: "joe", role: "ANALYST" }
+    mockUser.current = { id: 4, username: "joe", role: "ANALYST" }
     render(<UsersPage />)
     expect(screen.getByText(/Administrator access required/)).toBeInTheDocument()
   })
 
   it("does not call the API for non-ADMIN users", () => {
-    mockUser.current = { username: "joe", role: "ANALYST" }
+    mockUser.current = { id: 4, username: "joe", role: "ANALYST" }
     render(<UsersPage />)
     expect(mockList).not.toHaveBeenCalled()
+  })
+
+  it("loads the page for SUPER_ADMIN", async () => {
+    mockUser.current = { id: 1, username: "root", role: "SUPER_ADMIN" }
+    render(<UsersPage />)
+    await waitFor(() => expect(mockList).toHaveBeenCalled())
   })
 
   // ── pending section ──────────────────────────────────────────────────────────
@@ -134,5 +163,51 @@ describe("UsersPage", () => {
   it("renders Create user button for admins", async () => {
     render(<UsersPage />)
     expect(screen.getByRole("button", { name: /Create user/i })).toBeInTheDocument()
+  })
+
+  it("offers only assignable roles in the create dialog", async () => {
+    mockUser.current = { id: 1, username: "admin", role: "ADMIN" }
+    render(<UsersPage />)
+    fireEvent.click(screen.getByRole("button", { name: /create user/i }))
+    const dialog = screen.getByRole("dialog")
+    expect(within(dialog).queryByText("ADMIN")).not.toBeInTheDocument()
+    expect(within(dialog).getByText("ANALYST")).toBeInTheDocument()
+  })
+
+  // ── hierarchy-aware actions ──────────────────────────────────────────────────
+
+  it("hides reset for an ADMIN target when the actor is ADMIN", async () => {
+    mockUser.current = { id: 1, username: "admin", role: "ADMIN" }
+    mockList.mockResolvedValue(listOf(activeUser({ id: 3, username: "admin2", role: "ADMIN" })))
+    render(<UsersPage />)
+    await screen.findByText("admin2")
+    expect(screen.queryByRole("button", { name: /reset password/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /change role/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /disable/i })).not.toBeInTheDocument()
+  })
+
+  it("shows the temporary password once and clears it on close", async () => {
+    mockUser.current = { id: 1, username: "root", role: "SUPER_ADMIN" }
+    mockList.mockResolvedValue(listOf(activeUser()))
+    render(<UsersPage />)
+
+    fireEvent.click(await screen.findByRole("button", { name: /reset password/i }))
+    fireEvent.click(screen.getByRole("button", { name: /confirm/i }))
+
+    expect(await screen.findByText("TmpPass123!")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }))
+    expect(screen.queryByText("TmpPass123!")).not.toBeInTheDocument()
+  })
+
+  it("shows a one-time reset code", async () => {
+    mockUser.current = { id: 1, username: "root", role: "SUPER_ADMIN" }
+    mockList.mockResolvedValue(listOf(activeUser()))
+    render(<UsersPage />)
+
+    fireEvent.click(await screen.findByRole("button", { name: /issue reset code/i }))
+    fireEvent.click(screen.getByRole("button", { name: /issue code/i }))
+
+    expect(await screen.findByText("abc123")).toBeInTheDocument()
   })
 })

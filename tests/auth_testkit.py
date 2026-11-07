@@ -82,6 +82,15 @@ def bearer_for_user(user_id: int) -> dict[str, str]:
     return {"Authorization": f"Bearer {raw_token}"}
 
 
+def auth_headers_for(user_id: int) -> dict[str, str]:
+    """Create a real bearer session for a test user."""
+    raw_token, _ = create_session(user_id=user_id, user_agent="pytest")
+    return {
+        "Authorization": f"Bearer {raw_token}",
+        "Origin": "http://localhost:3000",
+    }
+
+
 def bearer_for_username(username: str) -> dict[str, str]:
     """Create a session for an existing username (used by integration scripts/tests)."""
     rows = db("SELECT id FROM dashboard_users WHERE lower(username) = lower(%s)", (username,))

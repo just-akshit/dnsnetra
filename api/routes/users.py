@@ -20,15 +20,17 @@ to prevent any single or concurrent transactions from reducing active administra
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field
 
 from labeler.intel.reputation.connection import get_connection
 from ..audit import AuditAction, get_audit_logs, log_audit_event
 from ..auth import (
+    generate_temporary_password,
     get_user_by_id,
     get_user_by_username,
     hash_password,
@@ -37,8 +39,13 @@ from ..auth import (
     validate_username,
 )
 from ..rbac import UserRole, UserStatus, require_permission
-from ..sessions import revoke_all_user_sessions
+from ..sessions import hash_session_token, revoke_all_user_sessions
 from ..trusted_proxy import get_client_ip
+from ..user_admin_policy import (
+    ROLE_RANK,
+    ensure_can_assign_role,
+    ensure_can_manage,
+)
 
 logger = logging.getLogger("api_users_router")
 
@@ -86,8 +93,10 @@ class ApproveUserRequest(BaseModel):
     role: UserRole = UserRole.ANALYST
 
 
-class ResetPasswordRequest(BaseModel):
-    new_password: str = Field(..., min_length=8, max_length=128)
+class ResetPasswordResponse(BaseModel):
+    username: str
+    temporary_password: str
+    must_change_password: bool = True
 
 
 class GenericMessageResponse(BaseModel):
@@ -101,29 +110,52 @@ class RevokeSessionsResponse(BaseModel):
     revoked_count: int
 
 
+class ResetCodeResponse(BaseModel):
+    code: str
+    expires_at: datetime
+
+
 def _extract_client_meta(request: Request) -> tuple[str, Optional[str]]:
     client_ip = get_client_ip(request)
     return client_ip, request.headers.get("user-agent")
 
 
-def _ensure_not_last_active_admin(cur, target_user_id: int) -> None:
-    """
-    Transaction-safe check ensuring an action does not leave zero active administrators.
-    Acquires exclusive row-level locks on all active admin rows (FOR UPDATE)
-    to serialize concurrent attempts and prevent race conditions.
-    """
+def _lock_active_principals(cur) -> list[tuple[int, str]]:
+    """Lock every active privileged account for the duration of the transaction."""
     cur.execute(
         """
-        SELECT id FROM dashboard_users
-        WHERE role = 'ADMIN' AND status = 'ACTIVE' AND is_active = true
+        SELECT id, role FROM dashboard_users
+        WHERE role IN ('SUPER_ADMIN', 'ADMIN')
+          AND status = 'ACTIVE'
+          AND is_active = true
+        ORDER BY id
         FOR UPDATE;
         """
     )
-    active_admins = [row[0] for row in cur.fetchall()]
-    if target_user_id in active_admins and len(active_admins) <= 1:
+    return [(row[0], row[1]) for row in cur.fetchall()]
+
+
+def _ensure_principal_remains(cur, target_role: str, target_id: int) -> None:
+    """
+    Never leave the system without a privileged principal.
+
+    The last active SUPER_ADMIN is always protected. The last active ADMIN is
+    protected only when no active SUPER_ADMIN exists to take over.
+    """
+    rows = _lock_active_principals(cur)
+    supers = [uid for uid, role in rows if role == "SUPER_ADMIN"]
+    admins = [uid for uid, role in rows if role == "ADMIN"]
+
+    if target_role == "SUPER_ADMIN" and target_id in supers and len(supers) <= 1:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Operation rejected: cannot disable or demote the last remaining active administrator.",
+            detail="Operation rejected: cannot remove the last active super administrator.",
+        )
+
+    if target_role == "ADMIN" and target_id in admins and not supers and len(admins) <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Operation rejected: cannot remove the last active administrator.",
         )
 
 
@@ -259,6 +291,13 @@ def create_user(
 
     clean_username = normalize_username(payload.username)
 
+    ensure_can_assign_role(
+        admin,
+        payload.role.value,
+        request=request,
+        attempted_action="create_user",
+    )
+
     # Check case-insensitive uniqueness
     if get_user_by_username(clean_username):
         raise HTTPException(
@@ -350,7 +389,7 @@ def update_user(
 
     # Prevent self-demotion or self-disablement
     if user_id == admin["id"]:
-        if payload.role is not None and payload.role != UserRole.ADMIN:
+        if payload.role is not None and payload.role.value != target_user["role"]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Administrators cannot demote their own account",
@@ -360,6 +399,14 @@ def update_user(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Administrators cannot disable their own account",
             )
+
+    ensure_can_manage(
+        admin,
+        target_user,
+        new_role=payload.role.value if payload.role else None,
+        request=request,
+        attempted_action="update_user",
+    )
 
     target_role = target_user["role"]
     target_status = target_user["status"]
@@ -390,7 +437,10 @@ def update_user(
     if not role_changed and not status_changed:
         return UserDetail(**target_user)
 
-    will_demote = role_changed and new_role != UserRole.ADMIN
+    will_demote = (
+        role_changed
+        and ROLE_RANK.get(new_role.value, 0) < ROLE_RANK.get(target_role, 0)
+    )
     will_deactivate = status_changed and new_status != UserStatus.ACTIVE
 
     updates = []
@@ -408,9 +458,9 @@ def update_user(
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            # Transactional guard: ensure not leaving 0 active admins
+            # Transactional guard: ensure not leaving 0 privileged principals
             if will_demote or will_deactivate:
-                _ensure_not_last_active_admin(cur, user_id)
+                _ensure_principal_remains(cur, target_role, user_id)
 
             cur.execute(
                 f"""
@@ -488,6 +538,14 @@ def approve_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only PENDING accounts can be approved",
         )
+
+    ensure_can_manage(
+        admin,
+        target_user,
+        new_role=payload.role.value,
+        request=request,
+        attempted_action="approve_user",
+    )
 
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -567,10 +625,17 @@ def disable_user(
             detail="Administrators cannot disable their own account",
         )
 
+    ensure_can_manage(
+        admin,
+        target_user,
+        request=request,
+        attempted_action="disable_user",
+    )
+
     with get_connection() as conn:
         with conn.cursor() as cur:
-            # Enforce Last Active Admin Protection inside transaction
-            _ensure_not_last_active_admin(cur, user_id)
+            # Enforce last-principal protection inside the transaction
+            _ensure_principal_remains(cur, target_user["role"], user_id)
 
             cur.execute(
                 """
@@ -625,6 +690,13 @@ def enable_user(
             detail=f"User with ID {user_id} not found",
         )
 
+    ensure_can_manage(
+        admin,
+        target_user,
+        request=request,
+        attempted_action="enable_user",
+    )
+
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -659,16 +731,20 @@ def enable_user(
 
 @router.post(
     "/{user_id}/reset-password",
-    response_model=GenericMessageResponse,
-    summary="Reset user password (Admin only)",
-    description="Sets a new Argon2id password for target user, marks must_change_password=true, and invalidates all existing sessions.",
+    response_model=ResetPasswordResponse,
+    summary="Reset user password (Admin / SUPER_ADMIN only)",
+    description=(
+        "Generates a one-time temporary password server-side, forces a password "
+        "change at next login, and revokes every active session for the target. "
+        "The password is returned once and never stored or logged in plaintext."
+    ),
 )
 def reset_password(
     user_id: int,
-    payload: ResetPasswordRequest,
     request: Request,
+    response: Response,
     admin: dict[str, Any] = Depends(require_permission("users:update")),
-) -> GenericMessageResponse:
+) -> ResetPasswordResponse:
     client_ip, user_agent = _extract_client_meta(request)
 
     target_user = get_user_by_id(user_id)
@@ -678,11 +754,14 @@ def reset_password(
             detail=f"User with ID {user_id} not found",
         )
 
-    pw_valid, pw_err = validate_password_strength(payload.new_password, username=target_user["username"])
-    if not pw_valid:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=pw_err)
+    ensure_can_manage(
+        admin,
+        target_user,
+        request=request,
+        attempted_action="reset_password",
+    )
 
-    new_hash = hash_password(payload.new_password)
+    temporary_password = generate_temporary_password(20)
 
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -695,7 +774,7 @@ def reset_password(
                     updated_at = NOW()
                 WHERE id = %s;
                 """,
-                (new_hash, user_id),
+                (hash_password(temporary_password), user_id),
             )
             conn.commit()
 
@@ -708,11 +787,20 @@ def reset_password(
         target_user_id=user_id,
         ip_address=client_ip,
         user_agent=user_agent,
+        metadata={
+            "outcome": "success",
+            "target_username": target_user["username"],
+            "sessions_revoked": True,
+        },
     )
 
-    return GenericMessageResponse(
-        message=f"Password for user '{target_user['username']}' was successfully reset. All active sessions invalidated.",
-        user_id=user_id,
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+
+    return ResetPasswordResponse(
+        username=target_user["username"],
+        temporary_password=temporary_password,
+        must_change_password=True,
     )
 
 
@@ -738,6 +826,14 @@ def revoke_sessions(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"User with ID {user_id} not found",
+        )
+
+    if user_id != admin["id"]:
+        ensure_can_manage(
+            admin,
+            target_user,
+            request=request,
+            attempted_action="revoke_sessions",
         )
 
     revoked_count = revoke_all_user_sessions(user_id)
@@ -786,3 +882,62 @@ def list_audit_logs(
         "offset": offset,
         "items": items,
     }
+
+
+# ---------------------------------------------------------------------------
+# 11. Issue One-Time Password Reset Code
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/{user_id}/reset-code",
+    response_model=ResetCodeResponse,
+    summary="Issue a one-time password reset code (Admin only)",
+)
+def issue_reset_code(
+    user_id: int,
+    request: Request,
+    response: Response,
+    admin: dict[str, Any] = Depends(require_permission("users:update")),
+) -> ResetCodeResponse:
+    target = get_user_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail=f"User with ID {user_id} not found")
+
+    ensure_can_manage(
+        admin,
+        target,
+        request=request,
+        attempted_action="issue_reset_code",
+    )
+
+    code = secrets.token_urlsafe(9)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE password_reset_tokens SET used_at = NOW() "
+                "WHERE user_id = %s AND used_at IS NULL;",
+                (user_id,),
+            )
+            cur.execute(
+                "INSERT INTO password_reset_tokens "
+                "(user_id, token_hash, expires_at, created_by) "
+                "VALUES (%s, %s, %s, %s);",
+                (user_id, hash_session_token(code), expires_at, admin["id"]),
+            )
+            conn.commit()
+
+    log_audit_event(
+        action=AuditAction.PASSWORD_RESET_CODE_ISSUED,
+        user_id=admin["id"],
+        target_user_id=user_id,
+        ip_address=get_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+        metadata={},
+    )
+
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+
+    return ResetCodeResponse(code=code, expires_at=expires_at)

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { AuthApiError, authApi } from "@/lib/auth/api"
 import { useCaptcha } from "@/lib/auth/use-captcha"
@@ -73,7 +74,13 @@ export default function LoginPage() {
         <AuthButton pending={pending} idle="Sign in" busy="Signing in..." />
       </AuthForm>
       <p className="text-center text-sm text-[var(--auth-muted)]">
-        Forgotten your password? Ask your administrator to reset it.
+        Have a reset code?{" "}
+        <Link
+          href="/reset-password"
+          className="font-medium text-[var(--auth-ink)] underline-offset-4 hover:underline"
+        >
+          Set a new password
+        </Link>
       </p>
     </AuthLayout>
   )

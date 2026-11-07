@@ -14,6 +14,7 @@ to guarantee proper release back to the pool.
 from __future__ import annotations
 
 import logging
+import threading
 from contextlib import contextmanager
 from typing import Generator
 
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 # Module-level pool (initialised once by initialize_database)
 # ---------------------------------------------------------------------------
 _pool: pg_pool.ThreadedConnectionPool | None = None
+_pool_lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -84,10 +86,15 @@ def get_connection() -> Generator[PgConnection, None, None]:
     The outer context manager handles commit/rollback automatically.
     """
     global _pool
-    if _pool is None:
-        _pool = create_pool()
+    pool = _pool
+    if pool is None:
+        with _pool_lock:
+            # Another thread may have created the pool while we waited.
+            if _pool is None:
+                _pool = create_pool()
+            pool = _pool
 
-    conn = _pool.getconn()
+    conn = pool.getconn()
     try:
         yield conn
         conn.commit()
@@ -95,4 +102,6 @@ def get_connection() -> Generator[PgConnection, None, None]:
         conn.rollback()
         raise
     finally:
-        _pool.putconn(conn)
+        # Always return the connection to the pool it came from. Using the
+        # module-level _pool here would break if another thread recreated it.
+        pool.putconn(conn)

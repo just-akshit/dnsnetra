@@ -75,6 +75,14 @@ const navSystem = [
   },
 ]
 
+const navAdmin = [
+  {
+    title: "Users",
+    url: "/users",
+    icon: <UsersIcon />,
+  },
+]
+
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const router = useRouter()
@@ -151,6 +159,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarGroupContent>
             <SidebarMenu>
               {navSystem.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    isActive={pathname === item.url}
+                    tooltip={item.title}
+                    render={<Link href={item.url} />}
+                  >
+                    {item.icon}
+                    <span>{item.title}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+              {(user?.role === "ADMIN" || user?.role === "SUPER_ADMIN") && navAdmin.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     isActive={pathname === item.url}

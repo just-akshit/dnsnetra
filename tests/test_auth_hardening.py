@@ -69,7 +69,13 @@ from api.sessions import (
     revoke_session,
 )
 from api.trusted_proxy import get_client_ip
-from tests.auth_testkit import TEST_PASSWORD, issue_captcha, session_token_from_client
+from tests.auth_testkit import (
+    TEST_PASSWORD,
+    auth_headers_for,
+    issue_captcha,
+    session_token_from_client,
+)
+from tests.test_auth_security_audit import mk_user  # noqa: F401  (fixture)
 from labeler.intel.reputation.connection import get_connection
 
 client = TestClient(app)
@@ -361,35 +367,30 @@ def test_admin_cannot_disable_final_admin():
     assert "Administrators cannot disable their own account" in res.json()["detail"]
 
 
-def test_two_admins_can_manage_each_other_safely():
-    """✓ Two admins can manage each other, but the final remaining admin is protected."""
-    login_res = _login("pytest_admin")
-    token = session_token_from_client(client)
-    headers = {"Authorization": f"Bearer {token}"}
+def test_admin_cannot_manage_another_admin(mk_user):
+    """✓ ADMIN may only manage staff; another ADMIN is out of reach."""
+    _, actor_id = mk_user("adminactor", role="ADMIN")
+    _, target_id = mk_user("admintarget", role="ADMIN")
+    headers = auth_headers_for(actor_id)
 
-    # 1. Create a second admin
-    admin2_name = f"admin2_{uuid.uuid4().hex[:6]}"
-    res_create = client.post(
-        "/api/v1/users",
-        json={"username": admin2_name, "password": "AdminPassword123!", "role": "ADMIN"},
-        headers=headers,
+    assert client.post(f"/api/v1/users/{target_id}/disable", headers=headers).status_code == 403
+    assert (
+        client.patch(
+            f"/api/v1/users/{target_id}",
+            json={"role": "ANALYST"},
+            headers=headers,
+        ).status_code
+        == 403
     )
-    assert res_create.status_code == 201
-    admin2_id = res_create.json()["id"]
 
-    # 2. First admin can disable second admin
-    res_dis = client.post(f"/api/v1/users/{admin2_id}/disable", headers=headers)
-    assert res_dis.status_code == 200
-    assert "disabled" in res_dis.json()["message"].lower()
 
-    # 3. Now attempt to demote second admin while already disabled, or demote first admin
-    first_admin_id = login_res.json()["user"]["id"]
-    res_demote = client.patch(
-        f"/api/v1/users/{first_admin_id}",
-        json={"role": "ANALYST"},
-        headers=headers,
-    )
-    assert res_demote.status_code == 400
+def test_super_admin_can_manage_another_admin(mk_user):
+    """✓ SUPER_ADMIN may manage an ADMIN target."""
+    _, actor_id = mk_user("superactor2", role="SUPER_ADMIN")
+    _, target_id = mk_user("admintarget2", role="ADMIN")
+    headers = auth_headers_for(actor_id)
+
+    assert client.post(f"/api/v1/users/{target_id}/disable", headers=headers).status_code == 200
 
 
 # ===========================================================================
@@ -502,17 +503,17 @@ def test_password_reset_and_must_change_password_flow():
     # 4. Admin resets password
     res_reset = client.post(
         f"/api/v1/users/{uid}/reset-password",
-        json={"new_password": "TempPassword999!"},
         headers=headers,
     )
     assert res_reset.status_code == 200
+    temp_password = res_reset.json()["temporary_password"]
 
     # 5. Old user session is revoked
     res_old_sess = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {user_token}"})
     assert res_old_sess.status_code == 401
 
     # 6. User logs in with temporary password; must_change_password is True
-    res_new_login = _login(analyst_name, "TempPassword999!")
+    res_new_login = _login(analyst_name, temp_password)
     assert res_new_login.status_code == 200
     assert res_new_login.json()["user"]["must_change_password"] is True
     new_token = session_token_from_client(client)
@@ -521,7 +522,7 @@ def test_password_reset_and_must_change_password_flow():
     res_change = client.post(
         "/api/v1/auth/change-password",
         json={
-            "current_password": "TempPassword999!",
+            "current_password": temp_password,
             "new_password": "PermanentPass456!",
             "confirm_password": "PermanentPass456!",
         },

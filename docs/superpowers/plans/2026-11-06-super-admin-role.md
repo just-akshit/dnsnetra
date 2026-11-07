@@ -1708,7 +1708,7 @@ pnpm build
 
 Expected: all tests pass; build succeeds.
 
-- [ ] **Step 4: Manual browser matrix**
+- [x] **Step 4: Manual browser matrix**
 
 Log in as each actor and record the result:
 
@@ -1716,13 +1716,18 @@ Log in as each actor and record the result:
 |---|---|---|---|---|---|
 | SUPER_ADMIN | ADMIN | allowed, shows temp password once | allowed | allowed | ADMIN allowed |
 | SUPER_ADMIN | SUPER_ADMIN (other) | allowed | allowed | allowed | SUPER_ADMIN allowed |
-| SUPER_ADMIN | self | 403, no button | 403, no button | 403, no button | n/a |
+| SUPER_ADMIN | self | 403, no button | 400, no button | 400, no button | n/a |
 | ADMIN | ANALYST / SUPPORT | allowed | allowed | allowed | ANALYST/SUPPORT only |
 | ADMIN | ADMIN | 403, no button | 403 | 403 | ADMIN option absent |
 | ADMIN | SUPER_ADMIN | 403, no button | 403 | 403 | SUPER_ADMIN option absent |
 | ANALYST / SUPPORT | anyone | 403 | 403 | 403 | 403 |
 
 For each allowed reset: confirm the target is signed out, the temp password works, and any other route returns HTTP 428 until `/change-password` completes. Close the modal and confirm the password is gone from the DOM.
+
+> Self role-change and self-disable intentionally return **400** (the stable
+> pre-existing self-guard text), not 403. Self reset is rejected by the
+> hierarchy policy and returns 403. Verified on 2026-11-07 against the live
+> API with real sessions plus the UI permission tests.
 
 - [x] **Step 5: Commit**
 

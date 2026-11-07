@@ -91,6 +91,9 @@ app.add_middleware(
 async def add_security_headers(request: Request, call_next):
     """Enforce defensive HTTP security headers on all responses."""
     response = await call_next(request)
+    if request.url.path.startswith("/api/v1/auth/"):
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"

@@ -68,10 +68,27 @@ def login(
     return res
 
 
+def session_token_from_client(client: TestClient) -> str:
+    """Read the opaque token from the client's cookie jar, never from JSON."""
+    token = client.cookies.get("dnsnetra_session")
+    if not token:
+        raise AssertionError("login did not set the dnsnetra_session cookie")
+    return token
+
+
 def bearer_for_user(user_id: int) -> dict[str, str]:
     """Create a real server-side session and return a bearer header."""
     raw_token, _ = create_session(user_id=user_id, user_agent="pytest")
     return {"Authorization": f"Bearer {raw_token}"}
+
+
+def auth_headers_for(user_id: int) -> dict[str, str]:
+    """Create a real bearer session for a test user."""
+    raw_token, _ = create_session(user_id=user_id, user_agent="pytest")
+    return {
+        "Authorization": f"Bearer {raw_token}",
+        "Origin": "http://localhost:3000",
+    }
 
 
 def bearer_for_username(username: str) -> dict[str, str]:

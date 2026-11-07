@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { AuthApiError, authApi } from "@/lib/auth/api"
 import { useCaptcha } from "@/lib/auth/use-captcha"
@@ -35,7 +36,8 @@ export default function LoginPage() {
     e.preventDefault()
     if (busy.current) return
     if (!username.trim() || !password) return setError("Enter your username and password.")
-    if (!captcha.challenge || !captcha.answer.trim()) return setError("Enter the CAPTCHA characters.")
+    if (!captcha.challenge) return setError("Verification code could not be loaded. Please click refresh.")
+    if (!captcha.answer.trim()) return setError("Enter the verification characters.")
 
     busy.current = true
     setPending(true)
@@ -58,17 +60,27 @@ export default function LoginPage() {
     }
   }
 
+  const isCaptchaError = Boolean(
+    error && (error.toLowerCase().includes("captcha") || error.toLowerCase().includes("verification"))
+  )
+
   return (
     <AuthLayout>
       <AuthForm title="Welcome back" subtitle="Sign in to continue to DNSNetra" onSubmit={onSubmit}>
         <UsernameField value={username} onChange={setUsername} disabled={pending} />
         <PasswordField value={password} onChange={setPassword} disabled={pending} />
-        <CaptchaField captcha={captcha} disabled={pending} />
+        <CaptchaField captcha={captcha} error={isCaptchaError ? error : undefined} disabled={pending} />
         <AuthError message={error} />
         <AuthButton pending={pending} idle="Sign in" busy="Signing in..." />
       </AuthForm>
       <p className="text-center text-sm text-[var(--auth-muted)]">
-        Forgotten your password? Ask your administrator to reset it.
+        Have a reset code?{" "}
+        <Link
+          href="/reset-password"
+          className="font-medium text-[var(--auth-ink)] underline-offset-4 hover:underline"
+        >
+          Set a new password
+        </Link>
       </p>
     </AuthLayout>
   )

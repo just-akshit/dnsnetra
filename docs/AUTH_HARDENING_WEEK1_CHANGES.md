@@ -598,3 +598,26 @@ directly into the password manager; the first login will force a change.
 - `docs/superpowers/plans/2026-10-28-auth-hardening-week1.md` (executed plan,
   untracked)
 - `docs/AUTH_HARDENING_WEEK1_CHANGES.md` (this document)
+
+---
+
+## Phase 2 baseline (2026-11-03)
+
+Recorded on branch `auth/phase-2` at the start of Phase 2, before any
+destructive action.
+
+| Object | Count / value |
+|---|---|
+| `dashboard_users` | 4 rows |
+| `sessions` | 530 rows |
+| `audit_logs` | 2,048 rows |
+| Accounts | `admin_sec` (ADMIN, ACTIVE), `admin` (ADMIN, ACTIVE, `must_change_password=false`), `CASE_TEST_CE775C` (ANALYST, PENDING), `analyst_user_1` (ANALYST, PENDING) |
+
+Auth suite baseline: `82 passed, 7 xfailed` across
+`test_auth_security_audit.py`, `test_auth_complete.py`,
+`test_auth_hardening.py`, `test_rbac_routes.py`.
+
+Phase 0 result (2026-11-03): purged `admin_sec`, `CASE_TEST_CE775C`,
+`analyst_user_1`; kept all `audit_logs` (real history preserved); rotated
+`admin` and set `must_change_password=true`. Pre-change backup:
+`~/dnsnetra-auth-backup-20261103-154007.sql` (mode 0600).

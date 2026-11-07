@@ -18,7 +18,7 @@
 - Python interpreter for all commands:
 
   ```bash
-  export PY=/private/var/folders/98/mngfqhbx1rd0nwgb97wt9_300000gn/T/opencode/audit-venv/bin/python
+  export PY=/Users/akshit/Developer/dnsnetra/.venv/bin/python
   ```
 
 - Every task is TDD: write the failing test, run it red, implement, run it green, commit.
@@ -176,11 +176,11 @@ Expected: all pass except the 7 known `xfail`s.
 
 **Interfaces:**
 - Consumes: `scripts/purge_test_users.py`, dry-run output.
-- Produces: one `admin` row; zero sessions; zero audit rows.
+- Produces: one `admin` row; `audit_logs` retained; sessions belonging to the deleted users removed by `ON DELETE CASCADE`. Admin's sessions are cleared by Task 3.
 
 - [ ] **Step 1: Ask for explicit approval**
 
-State exactly what will be deleted: `admin_sec`, `CASE_TEST_CE775C`, `analyst_user_1`, all sessions, all audit rows. Do not proceed on silence.
+State exactly what will be deleted: `admin_sec`, `CASE_TEST_CE775C`, `analyst_user_1`, and their sessions. Audit logs are **kept** (they contain real login history). Do not proceed on silence.
 
 - [ ] **Step 2: Dry run**
 
@@ -206,7 +206,7 @@ Expected: a non-empty SQL file.
 - [ ] **Step 4: Execute**
 
 ```bash
-$PY scripts/purge_test_users.py --keep admin --execute --purge-audit-logs
+$PY scripts/purge_test_users.py --keep admin --execute
 ```
 
 Expected: `Deleted 3 user(s). Kept: admin`.
@@ -221,7 +221,11 @@ SELECT count(*) AS sessions FROM sessions;
 SELECT count(*) AS audit_rows FROM audit_logs;"
 ```
 
-Expected: one row (`admin`), `sessions=0`, `audit_rows=0`.
+Expected: one row (`admin`); `audit_rows` retained (real history is not destroyed); `sessions` still counts historical rows but **zero active** sessions after Task 3. Check with:
+
+```sql
+SELECT count(*) FROM sessions WHERE revoked_at IS NULL AND expires_at > NOW();
+```
 
 ---
 
@@ -245,10 +249,19 @@ Expected: `Dry run: would rotate 'admin'.`
 - [ ] **Step 2: Execute without echoing the password into chat**
 
 ```bash
-$PY scripts/rotate_admin_password.py --username admin --execute
+umask 077
+$PY scripts/rotate_admin_password.py --username admin --execute \
+  > "$HOME/dnsnetra-admin-once.txt"
+chmod 600 "$HOME/dnsnetra-admin-once.txt"
 ```
 
-Read the printed password directly into the password manager. Do not paste it into this conversation or a ticket.
+Read the one-time password from `~/dnsnetra-admin-once.txt` and put it in your
+password manager. Do not paste it into this conversation or a ticket. Delete the
+file after you have set the new password in Step 4:
+
+```bash
+rm -f "$HOME/dnsnetra-admin-once.txt"
+```
 
 - [ ] **Step 3: Verify the database flag**
 
@@ -1035,7 +1048,7 @@ export const usersApi = {
 }
 ```
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -1067,7 +1080,7 @@ describe("usersApi", () => {
 })
 ```
 
-- [ ] **Step 2: Run red**
+- [x] **Step 2: Run red**
 
 ```bash
 cd frontend && pnpm vitest run lib/admin/users-api.test.ts
@@ -1075,7 +1088,7 @@ cd frontend && pnpm vitest run lib/admin/users-api.test.ts
 
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement the client**
+- [x] **Step 3: Implement the client**
 
 ```ts
 import { getActiveApiBase } from "@/lib/auth/api"
@@ -1166,13 +1179,13 @@ export const usersApi = {
 }
 ```
 
-- [ ] **Step 4: Run green**
+- [x] **Step 4: Run green**
 
 ```bash
 cd frontend && pnpm vitest run lib/admin/users-api.test.ts
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/lib/admin/users-api.ts frontend/lib/admin/users-api.test.ts
@@ -1191,7 +1204,7 @@ git commit -m "feat(admin): add typed users API client"
 - Consumes: `usersApi`.
 - Produces: pending-approval table, active/disabled table, create form, reset dialog, disable/enable/revoke actions.
 
-- [ ] **Step 1: Write the failing smoke test**
+- [x] **Step 1: Write the failing smoke test**
 
 ```tsx
 import { render, screen, waitFor } from "@testing-library/react"
@@ -1231,7 +1244,7 @@ describe("UsersPage", () => {
 })
 ```
 
-- [ ] **Step 2: Run red**
+- [x] **Step 2: Run red**
 
 ```bash
 cd frontend && pnpm vitest run "app/(dashboard)/users/page.test.tsx"
@@ -1239,7 +1252,7 @@ cd frontend && pnpm vitest run "app/(dashboard)/users/page.test.tsx"
 
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement the page**
+- [x] **Step 3: Implement the page**
 
 Use `Table`, `Badge`, `Button`, `Input`, `Label`, `Dialog`, `Select` from `@/components/ui/*`. Keep the page client-side.
 
@@ -1505,13 +1518,13 @@ function ResetPasswordDialog({
 }
 ```
 
-- [ ] **Step 4: Run the test and the build**
+- [x] **Step 4: Run the test and the build**
 
 ```bash
 cd frontend && pnpm vitest run "app/(dashboard)/users/page.test.tsx" && pnpm build
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add "frontend/app/(dashboard)/users/page.tsx" "frontend/app/(dashboard)/users/page.test.tsx"
@@ -1530,7 +1543,7 @@ git commit -m "feat(admin): add user lifecycle page"
 - Consumes: `useAuthUser()` → `{ role }`.
 - Produces: “Users” link visible only to `ADMIN`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```tsx
 import * as React from "react"
@@ -1584,7 +1597,7 @@ describe("AppSidebar", () => {
 })
 ```
 
-- [ ] **Step 2: Run red**
+- [x] **Step 2: Run red**
 
 ```bash
 cd frontend && pnpm vitest run components/app-sidebar.test.tsx
@@ -1593,7 +1606,7 @@ cd frontend && pnpm vitest run components/app-sidebar.test.tsx
 Expected: FAIL on “shows Users to admins” — the entry does not exist yet. The
 non-admin case passes vacuously until the link is added; Step 4 re-runs both.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Add to `navSystem`:
 
@@ -1623,13 +1636,13 @@ Filter the System group before mapping (`user` already exists in the component):
   ))}
 ```
 
-- [ ] **Step 4: Run green + build**
+- [x] **Step 4: Run green + build**
 
 ```bash
 cd frontend && pnpm vitest run components/app-sidebar.test.tsx && pnpm test && pnpm build
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/components/app-sidebar.tsx frontend/components/app-sidebar.test.tsx
@@ -1639,6 +1652,12 @@ git commit -m "feat(admin): gate user management navigation by role"
 ---
 
 ### Task 13 (T10): One-time-code password reset — **decision gate**
+
+> **Update (2026-11-06):** the admin-chosen `POST /users/{id}/reset-password`
+> body was replaced by a server-generated temporary password (returned once,
+> `Cache-Control: no-store`). The one-time-code flow below remains the
+> user-chosen alternative and now has an admin UI trigger. See
+> `docs/superpowers/plans/2026-11-06-super-admin-role.md`.
 
 **Decision required before starting:** approve Option A (admin-issued code, no email). If you prefer emailed links, stop and write a separate plan; this task assumes Option A.
 
@@ -1657,7 +1676,7 @@ git commit -m "feat(admin): gate user management navigation by role"
 - Table `password_reset_tokens(id, user_id, token_hash, expires_at, used_at, created_by, created_at)`
 - Code: `secrets.token_urlsafe(9)` (12 chars), stored as `hash_session_token(code)`, TTL 15 min, single use.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `tests/test_password_reset.py` reuses the disposable-user fixture and admin session fixture from the audit module (pytest collects imported fixtures):
 
@@ -1701,7 +1720,7 @@ def test_reset_code_changes_password_once(mk_user, admin_headers):
     assert replay.status_code == 400
 ```
 
-- [ ] **Step 2: Run red**
+- [x] **Step 2: Run red**
 
 ```bash
 $PY -m pytest tests/test_password_reset.py -q
@@ -1709,7 +1728,7 @@ $PY -m pytest tests/test_password_reset.py -q
 
 Expected: 404 — route absent.
 
-- [ ] **Step 3: Add the migration**
+- [x] **Step 3: Add the migration**
 
 `database/migrations/009_password_reset_tokens.sql`:
 
@@ -1736,7 +1755,7 @@ Apply:
 $PY database/migrate.py
 ```
 
-- [ ] **Step 4: Issue codes (admin route)**
+- [x] **Step 4: Issue codes (admin route)**
 
 Add to `api/routes/users.py`:
 
@@ -1791,7 +1810,7 @@ def issue_reset_code(
 
 Imports in `api/routes/users.py`: add `import secrets`, extend `from datetime import datetime` to `from datetime import datetime, timedelta, timezone`, and import `hash_session_token` from `..sessions` (alongside the existing `revoke_all_user_sessions`).
 
-- [ ] **Step 5: Redeem codes (public route)**
+- [x] **Step 5: Redeem codes (public route)**
 
 In `api/routes/auth.py`, extend the sessions import first:
 
@@ -1879,7 +1898,7 @@ def reset_password(payload: ResetPasswordRequest, request: Request) -> dict[str,
     return {"message": "Password updated. Sign in with your new password."}
 ```
 
-- [ ] **Step 6: Frontend reset page**
+- [x] **Step 6: Frontend reset page**
 
 Create `frontend/app/(auth)/reset-password/page.tsx`:
 
@@ -2045,7 +2064,7 @@ Add to `frontend/lib/auth/api.ts`:
   }) => post<{ message: string }>("/reset-password", b),
 ```
 
-- [ ] **Step 7: Run tests**
+- [x] **Step 7: Run tests**
 
 ```bash
 $PY -m pytest tests/test_password_reset.py -q
@@ -2053,7 +2072,7 @@ $PY -m pytest tests/test_auth_security_audit.py tests/test_auth_complete.py -q
 cd frontend && pnpm test && pnpm build
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add database/migrations/009_password_reset_tokens.sql api/routes/users.py api/routes/auth.py \
@@ -2269,7 +2288,7 @@ Add a reminder 30 days before expiry.
 | Task | Command | Expected |
 |---|---|---|
 | 1 | `$PY -m pytest tests/test_auth_security_audit.py -q` | pass + 7 xfail |
-| 2 | purge then `SELECT count(*)` | 1 user, 0 sessions, 0 audit |
+| 2 | purge then `SELECT count(*)` | 1 user; audit rows retained; no active test-user sessions |
 | 3 | browser login | forced `/change-password` |
 | 4 | `pytest -k cacheable` | pass |
 | 5 | `pytest -k dummy_hash` | pass |

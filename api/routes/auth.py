@@ -38,8 +38,18 @@ from ..auth import (
 )
 from ..captcha import create_captcha, verify_and_consume_captcha
 from ..auth_config import cookie_secure, get_captcha_ttl_seconds, get_session_ttl_seconds, signup_enabled
-from ..rate_limiter import rate_limiter
-from ..sessions import create_session, revoke_session
+from ..login_throttle import (
+    is_locked,
+    record_failure,
+    reset as reset_login_failures,
+)
+from ..rate_limiter import check_rate_limit, rate_limiter
+from ..sessions import (
+    create_session,
+    hash_session_token,
+    revoke_all_user_sessions,
+    revoke_session,
+)
 from ..trusted_proxy import get_client_ip
 
 logger = logging.getLogger("api_auth_router")
@@ -95,7 +105,6 @@ class ChangePasswordRequest(BaseModel):
 
 class ChangePasswordResponse(BaseModel):
     message: str
-    session_token: str
 
 
 class LogoutResponse(BaseModel):
@@ -246,7 +255,7 @@ def signup(payload: SignupRequest, request: Request) -> SignupResponse:
     "/login",
     response_model=TokenResponse,
     summary="Login with username/password credentials",
-    description="Authenticates active user credentials, verifies CAPTCHA if provided, sets HttpOnly session cookie, and returns session token.",
+    description="Authenticates active user credentials, verifies CAPTCHA, sets the HttpOnly session cookie, and returns the user profile.",
     dependencies=[Depends(rate_limiter(action="login", max_requests=15, window_seconds=60))],
 )
 def login(payload: LoginRequest, request: Request, response: Response) -> TokenResponse:
@@ -258,6 +267,14 @@ def login(payload: LoginRequest, request: Request, response: Response) -> TokenR
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username or email is required",
+        )
+
+    locked, retry_after = is_locked(identifier)
+    if locked:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts. Please retry later.",
+            headers={"Retry-After": str(retry_after)},
         )
 
     # CAPTCHA is mandatory: verify and consume it before touching credentials
@@ -274,6 +291,7 @@ def login(payload: LoginRequest, request: Request, response: Response) -> TokenR
     # Authenticate credentials and verify ACTIVE status
     user = authenticate_user(identifier, payload.password)
     if not user:
+        record_failure(identifier)
         log_audit_event(
             action=AuditAction.LOGIN_FAILURE,
             user_id=None,
@@ -286,6 +304,8 @@ def login(payload: LoginRequest, request: Request, response: Response) -> TokenR
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    reset_login_failures(identifier)
 
     # Create server-side session
     ttl_seconds = get_session_ttl_seconds()
@@ -317,8 +337,6 @@ def login(payload: LoginRequest, request: Request, response: Response) -> TokenR
     )
 
     return TokenResponse(
-        session_token=raw_session_token,
-        access_token=raw_session_token,
         token_type="bearer",
         expires_in=ttl_seconds,
         user={
@@ -353,6 +371,14 @@ def login_for_access_token(
     """Canonical OAuth2 form password login."""
     client_ip, user_agent = _extract_client_metadata(request)
 
+    locked, retry_after = is_locked(form_data.username)
+    if locked:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts. Please retry later.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
     captcha_valid, captcha_err = verify_and_consume_captcha(
         captcha_id=captcha_id,
         user_answer=captcha_answer,
@@ -366,6 +392,7 @@ def login_for_access_token(
     user = authenticate_user(form_data.username, form_data.password)
 
     if not user:
+        record_failure(form_data.username)
         log_audit_event(
             action=AuditAction.LOGIN_FAILURE,
             user_id=None,
@@ -378,6 +405,8 @@ def login_for_access_token(
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    reset_login_failures(form_data.username)
 
     ttl_seconds = get_session_ttl_seconds()
     raw_session_token, _ = create_session(
@@ -406,8 +435,6 @@ def login_for_access_token(
     )
 
     return TokenResponse(
-        session_token=raw_session_token,
-        access_token=raw_session_token,
         token_type="bearer",
         expires_in=ttl_seconds,
         user={
@@ -430,6 +457,7 @@ def login_for_access_token(
     response_model=ChangePasswordResponse,
     summary="Change user password",
     description="Allows authenticated user to update their password. Clears must_change_password flag and issues new session.",
+    dependencies=[Depends(rate_limiter(action="change_password", max_requests=10, window_seconds=60))],
 )
 def user_change_password(
     payload: ChangePasswordRequest,
@@ -439,6 +467,19 @@ def user_change_password(
 ) -> ChangePasswordResponse:
     """Handle user password change."""
     client_ip, user_agent = _extract_client_metadata(request)
+
+    allowed, retry_after = check_rate_limit(
+        key=current_user["username"],
+        action="change_password_user",
+        max_requests=5,
+        window_seconds=60,
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many password change attempts.",
+            headers={"Retry-After": str(retry_after)},
+        )
 
     # Verify confirmation match
     if payload.new_password != payload.confirm_password:
@@ -499,7 +540,6 @@ def user_change_password(
 
     return ChangePasswordResponse(
         message="Password updated successfully",
-        session_token=new_session_token,
     )
 
 
@@ -538,6 +578,82 @@ def logout(
     )
 
     return LogoutResponse(message="Logged out successfully")
+
+
+# ---------------------------------------------------------------------------
+# 6b. Reset Password with One-Time Code
+# ---------------------------------------------------------------------------
+
+class ResetPasswordRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=100)
+    code: str = Field(..., min_length=4, max_length=64)
+    new_password: str = Field(..., min_length=8, max_length=128)
+    confirm_password: str = Field(..., min_length=8, max_length=128)
+    captcha_id: str = Field(..., min_length=10, max_length=64)
+    captcha_answer: str = Field(..., min_length=1, max_length=20)
+
+
+@router.post(
+    "/reset-password",
+    summary="Redeem a one-time password reset code",
+    dependencies=[Depends(rate_limiter(action="reset_password", max_requests=10, window_seconds=60))],
+)
+def reset_password(payload: ResetPasswordRequest, request: Request) -> dict[str, str]:
+    captcha_valid, captcha_err = verify_and_consume_captcha(
+        captcha_id=payload.captcha_id, user_answer=payload.captcha_answer
+    )
+    if not captcha_valid:
+        raise HTTPException(status_code=400, detail=f"CAPTCHA verification failed: {captcha_err}")
+
+    if payload.new_password != payload.confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match")
+
+    user = get_user_by_username(payload.username)
+    generic = HTTPException(status_code=400, detail="Invalid or expired reset code")
+    if not user:
+        raise generic
+
+    ok, reason = validate_password_strength(payload.new_password, user["username"])
+    if not ok:
+        raise HTTPException(status_code=400, detail=reason)
+
+    token_hash = hash_session_token(payload.code)
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id FROM password_reset_tokens
+                WHERE user_id = %s AND token_hash = %s
+                  AND used_at IS NULL AND expires_at > NOW()
+                FOR UPDATE;
+                """,
+                (user["id"], token_hash),
+            )
+            row = cur.fetchone()
+            if not row:
+                conn.rollback()
+                raise generic
+            cur.execute(
+                "UPDATE dashboard_users SET password_hash = %s, hashed_password = NULL, "
+                "must_change_password = false, updated_at = NOW() WHERE id = %s;",
+                (hash_password(payload.new_password), user["id"]),
+            )
+            cur.execute(
+                "UPDATE password_reset_tokens SET used_at = NOW() WHERE id = %s;",
+                (row[0],),
+            )
+            conn.commit()
+
+    revoke_all_user_sessions(user["id"])
+    log_audit_event(
+        action="PASSWORD_RESET_COMPLETED",
+        user_id=user["id"],
+        target_user_id=user["id"],
+        ip_address=get_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+        metadata={"username": user["username"]},
+    )
+    return {"message": "Password updated. Sign in with your new password."}
 
 
 # ---------------------------------------------------------------------------

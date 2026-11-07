@@ -1,8 +1,8 @@
 """
 Centralized Role-Based Access Control (RBAC) for DNSNetra API
 =============================================================
-Defines system roles (ADMIN, ANALYST, SUPPORT), permission mappings,
-and reusable FastAPI dependency guards.
+Defines system roles (SUPER_ADMIN, ADMIN, ANALYST, SUPPORT), permission
+mappings, and reusable FastAPI dependency guards.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from fastapi import Depends, HTTPException, status
 
 
 class UserRole(str, Enum):
+    SUPER_ADMIN = "SUPER_ADMIN"
     ADMIN = "ADMIN"
     ANALYST = "ANALYST"
     SUPPORT = "SUPPORT"
@@ -82,6 +83,13 @@ ROLE_PERMISSIONS: dict[str, Set[str]] = {
         "reports:read",
     },
 }
+
+# SUPER_ADMIN is a strict superset of ADMIN. The extra authority over other
+# administrators is expressed by the hierarchy policy, not by a wider
+# permission matrix.
+ROLE_PERMISSIONS[UserRole.SUPER_ADMIN.value] = set(
+    ROLE_PERMISSIONS[UserRole.ADMIN.value]
+)
 
 
 def get_role_permissions(role: str | UserRole) -> Set[str]:

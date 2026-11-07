@@ -16,6 +16,8 @@ from __future__ import annotations
 import logging
 import os
 import re
+import secrets
+import string
 from datetime import datetime
 from typing import Any, Optional
 
@@ -59,6 +61,9 @@ _hasher = argon2.PasswordHasher(
     type=argon2.Type.ID,
 )
 
+# A fixed hash used to spend the same Argon2id work for unknown usernames.
+_DUMMY_PASSWORD_HASH = _hasher.hash(secrets.token_urlsafe(32))
+
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
@@ -89,9 +94,23 @@ def validate_password_strength(password: str, username: Optional[str] = None) ->
 
     if not re.search(r"[a-zA-Z]", password):
         return False, "Password must contain at least one letter"
-    if not re.search(r"[0-9!@#$%^&*(),.?\":{}|<>]", password):
+    if not re.search(r"[^A-Za-z]", password):
         return False, "Password must contain at least one digit or special character"
     return True, "OK"
+
+
+_TEMP_PASSWORD_ALPHABET = string.ascii_letters + string.digits + "!@#$%^&*()-_=+"
+
+
+def generate_temporary_password(length: int = 20) -> str:
+    """Return a random password that satisfies validate_password_strength()."""
+    for _ in range(100):
+        candidate = "".join(
+            secrets.choice(_TEMP_PASSWORD_ALPHABET) for _ in range(length)
+        )
+        if validate_password_strength(candidate)[0]:
+            return candidate
+    raise RuntimeError("could not generate a policy-compliant temporary password")
 
 
 def normalize_username(username: Optional[str]) -> str:
@@ -103,6 +122,10 @@ def normalize_username(username: Optional[str]) -> str:
     if not username:
         return ""
     return username.strip().lower()
+
+
+def _reserved_key(value: str) -> str:
+    return value.strip().strip("._-").lower()
 
 
 def validate_username(username: str, is_signup: bool = False) -> tuple[bool, str]:
@@ -120,7 +143,7 @@ def validate_username(username: str, is_signup: bool = False) -> tuple[bool, str
     if not re.match(r"^[a-zA-Z0-9_.-]+$", clean):
         return False, "Username may only contain letters, numbers, underscores, dashes, and periods"
 
-    if is_signup and clean.lower() in RESERVED_USERNAMES:
+    if is_signup and _reserved_key(clean) in RESERVED_USERNAMES:
         return False, f"Username '{clean}' is reserved by the system"
 
     return True, "OK"
@@ -260,9 +283,11 @@ def authenticate_user(identifier: str, plain_password: str) -> Optional[dict[str
     """
     user = get_user_by_username(identifier)
     if not user:
+        verify_password(plain_password, _DUMMY_PASSWORD_HASH)
         return None
 
     if not user.get("is_active") or user.get("status") != "ACTIVE":
+        verify_password(plain_password, user.get("password_hash") or _DUMMY_PASSWORD_HASH)
         return None
 
     stored_hash = user.get("password_hash") or ""
@@ -416,8 +441,6 @@ async def require_admin(
 # ---------------------------------------------------------------------------
 
 class TokenResponse(BaseModel):
-    session_token: str
-    access_token: str
     token_type: str = "bearer"
     expires_in: int
     user: dict[str, Any]

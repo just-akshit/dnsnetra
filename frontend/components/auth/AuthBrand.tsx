@@ -6,12 +6,14 @@ import Link from "next/link"
  */
 export function AuthBrand({ className = "" }: { className?: string }) {
   return (
-    <Link
-      href="/login"
-      aria-label="DNSNetra"
-      className={`auth-brand-font inline-block text-[1.75rem] leading-none font-semibold tracking-[-0.02em] text-[var(--auth-ink)] no-underline ${className}`}
-    >
-      DNSNetra
-    </Link>
+    <div className="flex justify-center text-center">
+      <Link
+        href="/login"
+        aria-label="DNSNetra"
+        className={`auth-brand-font text-[2.125rem] sm:text-[2.35rem] leading-none font-bold tracking-[-0.03em] text-[var(--auth-ink)] no-underline transition-opacity hover:opacity-90 ${className}`}
+      >
+        DNSNetra
+      </Link>
+    </div>
   )
 }

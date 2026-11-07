@@ -54,7 +54,7 @@ from api.sessions import (
     revoke_session,
 )
 from labeler.intel.reputation.connection import get_connection
-from tests.auth_testkit import TEST_PASSWORD, login
+from tests.auth_testkit import TEST_PASSWORD, login, session_token_from_client
 
 client = TestClient(app)
 
@@ -342,8 +342,9 @@ def test_login_valid_with_admin():
     )
     assert res.status_code == 200
     data = res.json()
-    assert "session_token" in data
-    assert "access_token" in data
+    assert "session_token" not in data
+    assert "access_token" not in data
+    assert client.cookies.get("dnsnetra_session")
     assert data["token_type"] == "bearer"
     assert data["user"]["username"] == "pytest_admin"
     assert data["user"]["role"] == "ADMIN"
@@ -402,7 +403,7 @@ def test_login_rate_limiting():
     assert 200 not in statuses
     assert 429 in statuses
     blocked = responses[statuses.index(429)]
-    assert "Too many requests" in blocked.json()["detail"]
+    assert "Too many" in blocked.json()["detail"]
     assert "Retry-After" in blocked.headers
 
 
@@ -414,7 +415,7 @@ def test_session_lifecycle_and_logout():
     """✓ Full session lifecycle: creation, authenticated request, logout, invalidation."""
     login_res = login(client, "pytest_admin")
     assert login_res.status_code == 200
-    token = login_res.json()["session_token"]
+    token = session_token_from_client(client)
 
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -599,16 +600,16 @@ def test_admin_reset_password_and_revoke_sessions(admin_headers):
     # Admin resets password
     res = client.post(
         f"/api/v1/users/{target_id}/reset-password",
-        json={"new_password": "NewSecretPassword123!"},
         headers=admin_headers,
     )
     assert res.status_code == 200
+    temp_password = res.json()["temporary_password"]
 
     # Old session must now be invalidated
     assert client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {old_session}"}).status_code == 401
 
-    # Verify user can authenticate with new password
-    new_user = authenticate_user("test_reset_target", "NewSecretPassword123!")
+    # Verify user can authenticate with the generated temporary password
+    new_user = authenticate_user("test_reset_target", temp_password)
     assert new_user is not None
 
 
@@ -641,7 +642,7 @@ def test_audit_logs_recorded_and_retrieved(admin_headers):
     # Trigger an explicit audit event
     log_audit_event(
         action=AuditAction.LOGIN_SUCCESS,
-        user_id=1,
+        user_id=get_user_by_username("admin")["id"],
         metadata={"test_run": True},
     )
 
@@ -656,27 +657,42 @@ def test_audit_logs_recorded_and_retrieved(admin_headers):
     assert any("LOGIN" in a or "SIGNUP" in a or "ACCOUNT" in a for a in actions)
 
 
-def test_admin_creates_admin_and_role_change(admin_headers):
-    """✓ Admin creates another Admin and modifies user roles."""
-    # 1. Admin creates another Admin
+def test_admin_cannot_create_admin(admin_headers):
+    """✓ An ADMIN may not create another ADMIN (only a SUPER_ADMIN may)."""
     res = client.post(
         "/api/v1/users",
         json={
-            "username": "test_new_admin",
+            "username": f"test_new_admin_{uuid.uuid4().hex[:6]}",
             "password": "NewAdminPass123!",
             "role": "ADMIN",
             "status": "ACTIVE",
         },
         headers=admin_headers,
     )
+    assert res.status_code == 403
+
+
+def test_super_admin_creates_admin_and_role_change(super_headers):
+    """✓ A SUPER_ADMIN creates another ADMIN and modifies user roles."""
+    username = f"test_super_admin_{uuid.uuid4().hex[:6]}"
+    res = client.post(
+        "/api/v1/users",
+        json={
+            "username": username,
+            "password": "NewAdminPass123!",
+            "role": "ADMIN",
+            "status": "ACTIVE",
+        },
+        headers=super_headers,
+    )
     assert res.status_code == 201
     new_admin_id = res.json()["id"]
 
-    # 2. Admin changes user role to ANALYST
+    # 2. SUPER_ADMIN changes user role to ANALYST
     patch_res = client.patch(
         f"/api/v1/users/{new_admin_id}",
         json={"role": "ANALYST"},
-        headers=admin_headers,
+        headers=super_headers,
     )
     assert patch_res.status_code == 200
     assert patch_res.json()["role"] == "ANALYST"

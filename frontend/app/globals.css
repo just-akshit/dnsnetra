@@ -149,9 +149,9 @@
    Change --auth-accent to rebrand; swap the wordmark face in app/layout.tsx.
 --------------------------------------------------------------------------- */
 .auth-theme {
-  --auth-bg: oklch(0.945 0.005 250);
+  --auth-bg: oklch(0.955 0.005 100);
   --auth-panel: oklch(0.99 0.002 250);
-  --auth-visual: oklch(0.925 0.007 250);
+  --auth-visual: oklch(0.925 0.01 110); /* matches the print paper */
   --auth-ink: oklch(0.2 0.02 255);
   --auth-muted: oklch(0.46 0.02 255);
   --auth-line: oklch(0.87 0.008 255);

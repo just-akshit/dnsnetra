@@ -4,9 +4,9 @@ tests/test_auth_security_audit.py
 Independent security audit of the authentication / authorization module.
 
 Every test in this file encodes the behaviour the module *should* have.
-Tests marked ``xfail`` reproduce a confirmed defect (AUTH-xx) and currently
-fail; they turn green automatically once the defect is fixed (remove the
-marker then). Tests that are not marked protect behaviour that already works.
+All previously deferred defects (AUTH-08, AUTH-12, AUTH-14, AUTH-15, AUTH-17)
+are fixed, so this module contains no expected-failure markers. Any failure
+here is a real regression.
 
 Run:
     pytest tests/test_auth_security_audit.py -rxX
@@ -40,7 +40,7 @@ from api.captcha import (
 from api.main import app
 from api.rate_limiter import reset_rate_limits
 from labeler.intel.reputation.connection import get_connection
-from tests.auth_testkit import issue_captcha
+from tests.auth_testkit import issue_captcha, session_token_from_client
 
 PASSWORD = "AuditPass123!"
 
@@ -235,7 +235,7 @@ def test_must_change_password_blocks_privileged_access(mk_user):
         },
     )
     assert login_res.status_code == 200
-    token = login_res.json()["session_token"]
+    token = session_token_from_client(client)
     res = client.get("/api/v1/users?limit=1", headers={"Authorization": f"Bearer {token}"})
     assert res.status_code == 428
     me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
@@ -264,22 +264,30 @@ def test_approve_cannot_grant_admin_role(mk_user, admin_headers):
 # AUTH-08: update_user invariants
 # ===========================================================================
 
-@pytest.mark.xfail(reason="AUTH-08: contradictory status/is_active leaks a DB constraint as HTTP 500", strict=False)
 def test_contradictory_status_update_returns_4xx(mk_user, admin_headers):
     _, uid = mk_user("contradict")
-    res = _client().patch(
-        f"/api/v1/users/{uid}", json={"status": "ACTIVE", "is_active": False}, headers=admin_headers
-    )
-    assert res.status_code in (400, 422)
+    client = _client()
+    assert client.patch(
+        f"/api/v1/users/{uid}",
+        json={"status": "ACTIVE", "is_active": False},
+        headers=admin_headers,
+    ).status_code == 400
+    assert client.patch(
+        f"/api/v1/users/{uid}",
+        json={"status": "DISABLED", "is_active": True},
+        headers=admin_headers,
+    ).status_code == 400
 
 
-@pytest.mark.xfail(reason="AUTH-08: no-op role update revokes all live sessions", strict=False)
 def test_noop_update_does_not_revoke_sessions(mk_user, admin_headers):
     username, uid = mk_user("noop", role="ANALYST")
     client = _client()
-    token = client.post("/api/v1/auth/login", json=_login_body(username)).json()["session_token"]
-    client.patch(f"/api/v1/users/{uid}", json={"role": "ANALYST"}, headers=admin_headers)
-    res = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    client.post("/api/v1/auth/login", json=_login_body(username))
+    raw = session_token_from_client(client)
+    assert client.patch(
+        f"/api/v1/users/{uid}", json={"role": "ANALYST"}, headers=admin_headers
+    ).status_code == 200
+    res = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {raw}"})
     assert res.status_code == 200
 
 
@@ -295,6 +303,51 @@ def test_rate_limit_cannot_be_bypassed_with_spoofed_xff(monkeypatch):
             "/api/v1/auth/captcha", headers={"X-Forwarded-For": f"203.0.113.{i}"}
         ).status_code
         for i in range(35)  # limit is 30/min
+    ]
+    assert 429 in codes
+
+
+# ===========================================================================
+# AUTH-16 (partial): per-account lockout and change-password limits
+# ===========================================================================
+
+def test_five_failed_logins_lock_the_account(mk_user):
+    username, _ = mk_user("lockme")
+    client = _client()
+    for _ in range(5):
+        res = client.post("/api/v1/auth/login", json=_login_body(username, "WrongPass123!"))
+        assert res.status_code == 401
+    blocked = client.post("/api/v1/auth/login", json=_login_body(username))
+    assert blocked.status_code == 429
+    assert "Retry-After" in blocked.headers
+
+
+def test_successful_login_resets_the_failure_counter(mk_user):
+    username, _ = mk_user("resetme")
+    client = _client()
+    for _ in range(4):
+        assert client.post(
+            "/api/v1/auth/login", json=_login_body(username, "WrongPass123!")
+        ).status_code == 401
+    assert client.post("/api/v1/auth/login", json=_login_body(username)).status_code == 200
+    for _ in range(4):
+        assert client.post(
+            "/api/v1/auth/login", json=_login_body(username, "WrongPass123!")
+        ).status_code == 401
+
+
+def test_change_password_is_rate_limited(analyst_headers):
+    codes = [
+        _client().post(
+            "/api/v1/auth/change-password",
+            json={
+                "current_password": "wrong",
+                "new_password": "NewPass123!",
+                "confirm_password": "NewPass123!",
+            },
+            headers=analyst_headers,
+        ).status_code
+        for _ in range(12)
     ]
     assert 429 in codes
 
@@ -367,43 +420,43 @@ def test_captcha_rejects_when_consume_fails():
 # AUTH-12: username enumeration via timing
 # ===========================================================================
 
-@pytest.mark.xfail(reason="AUTH-12: unknown users skip password hashing (timing oracle)", strict=False)
-def test_unknown_user_still_performs_a_dummy_hash(mk_user):
-    username, _ = mk_user("timing")
-    original = auth.verify_password
-    calls = {"n": 0}
+def test_unknown_user_still_performs_a_dummy_hash(monkeypatch):
+    calls: list[str] = []
+    real_verify = auth.verify_password
 
-    def spy(plain, hashed):
-        calls["n"] += 1
-        return original(plain, hashed)
+    def counting_verify(plain: str, hashed: str) -> bool:
+        calls.append(hashed)
+        return real_verify(plain, hashed)
 
-    auth.verify_password = spy
-    try:
-        auth.authenticate_user("definitely_missing_user_zzz", PASSWORD)
-        assert calls["n"] == 1, "no dummy hash performed for unknown user"
-        calls["n"] = 0
-        auth.authenticate_user(username, "WrongPassword123!")
-        assert calls["n"] == 1
-    finally:
-        auth.verify_password = original
+    monkeypatch.setattr(auth, "verify_password", counting_verify)
+    res = _client().post("/api/v1/auth/login", json=_login_body("definitely_missing_user"))
+    assert res.status_code == 401
+    assert len(calls) == 1
+    assert calls[0] == auth._DUMMY_PASSWORD_HASH
 
 
 # ===========================================================================
 # AUTH-15: token-bearing responses must not be cacheable
 # ===========================================================================
 
-@pytest.mark.xfail(reason="AUTH-15: /auth/login response (contains token) has no Cache-Control", strict=False)
 def test_login_response_is_not_cacheable(mk_user):
     username, _ = mk_user("cache")
-    res = _client().post("/api/v1/auth/login", json=_login_body(username))
+    client = _client()
+    res = client.post("/api/v1/auth/login", json=_login_body(username))
     assert "no-store" in (res.headers.get("cache-control") or "").lower()
+    me = client.get("/api/v1/auth/me")
+    assert "no-store" in (me.headers.get("cache-control") or "").lower()
 
 
-@pytest.mark.xfail(reason="AUTH-14: session token is exposed in the JSON body alongside the HttpOnly cookie", strict=False)
 def test_login_does_not_return_raw_session_token_in_body(mk_user):
     username, _ = mk_user("nobodytoken")
-    res = _client().post("/api/v1/auth/login", json=_login_body(username))
-    assert "session_token" not in res.json()
+    client = _client()
+    res = client.post("/api/v1/auth/login", json=_login_body(username))
+    assert res.status_code == 200
+    body = res.json()
+    assert "session_token" not in body
+    assert "access_token" not in body
+    assert client.cookies.get("dnsnetra_session")
 
 
 # ===========================================================================
@@ -430,16 +483,20 @@ def test_public_signup_is_disabled_by_default(monkeypatch):
 # AUTH-17: password / username policy inconsistencies
 # ===========================================================================
 
-@pytest.mark.xfail(reason="AUTH-17: '_' is a special character but the policy rejects it", strict=False)
 def test_underscore_counts_as_special_character():
     ok, reason = auth.validate_password_strength("Password_")
     assert ok, reason
 
 
-@pytest.mark.xfail(reason="AUTH-17: '.admin.' bypasses the reserved-name list", strict=False)
-def test_dotted_reserved_username_is_rejected():
-    ok, reason = auth.validate_username(".admin.", is_signup=True)
+@pytest.mark.parametrize("candidate", [".admin.", "admin.", "_admin_", "Admin.", ".ROOT."])
+def test_dotted_reserved_username_is_rejected(candidate):
+    ok, reason = auth.validate_username(candidate, is_signup=True)
     assert not ok, reason
+
+
+def test_normal_username_with_dot_is_still_allowed():
+    ok, reason = auth.validate_username("john.doe", is_signup=True)
+    assert ok, reason
 
 
 # ===========================================================================
@@ -465,7 +522,8 @@ def test_session_cookie_is_httponly_and_samesite(mk_user):
 def test_disabled_user_session_is_rejected(mk_user):
     username, uid = mk_user("disabled_session")
     client = _client()
-    token = client.post("/api/v1/auth/login", json=_login_body(username)).json()["session_token"]
+    client.post("/api/v1/auth/login", json=_login_body(username))
+    token = session_token_from_client(client)
     _db(
         "UPDATE dashboard_users SET status = 'DISABLED', is_active = false WHERE id = %s",
         (uid,),
@@ -503,9 +561,11 @@ def test_garbage_bearer_token_is_401():
 def test_password_change_revokes_other_sessions(mk_user):
     username, _ = mk_user("rotate")
     first = _client()
-    t1 = first.post("/api/v1/auth/login", json=_login_body(username)).json()["session_token"]
+    first.post("/api/v1/auth/login", json=_login_body(username))
+    t1 = session_token_from_client(first)
     second = _client()
-    t2 = second.post("/api/v1/auth/login", json=_login_body(username)).json()["session_token"]
+    second.post("/api/v1/auth/login", json=_login_body(username))
+    t2 = session_token_from_client(second)
 
     res = first.post(
         "/api/v1/auth/change-password",
@@ -520,4 +580,4 @@ def test_password_change_revokes_other_sessions(mk_user):
     assert second.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {t2}"}).status_code == 401
     assert first.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {t1}"}).status_code == 401
     # the freshly issued replacement session works
-    assert first.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {res.json()['session_token']}"}).status_code == 200
+    assert first.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {session_token_from_client(first)}"}).status_code == 200

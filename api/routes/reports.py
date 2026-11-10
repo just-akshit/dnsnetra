@@ -21,6 +21,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 
+from api.audit import AuditAction, log_audit_event
 from api.rate_limiter import enforce_search_rate_limit
 from api.rbac import require_permission
 from api.schemas import (
@@ -547,6 +548,7 @@ def get_report_entity(
     description="Streams query event log as RFC 4180 CSV using identical filter semantics to /reports/queries.",
 )
 def get_report_export_csv(
+    request: Request,
     limit: int = Query(5000, ge=1, le=50000, description="Max query rows to export (1 to 50,000)"),
     client_ip: Optional[str] = Query(None, description="Filter by client IP"),
     domain: Optional[str] = Query(None, description="Filter by domain name"),
@@ -596,5 +598,24 @@ def get_report_export_csv(
         "Content-Disposition": 'attachment; filename="dnsnetra_queries_export.csv"',
         "Cache-Control": "no-cache, no-store, must-revalidate",
     }
+
+    log_audit_event(
+        action=AuditAction.REPORT_EXPORTED,
+        user_id=current_user["id"],
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        target_type="export",
+        target_id=filter_dom or filter_ip or "all",
+        metadata={
+            "format": "csv",
+            "limit": limit,
+            "client_ip": filter_ip,
+            "domain": filter_dom,
+            "verdict": canon_verdict,
+            "query_type": query_type,
+            "window": window,
+        },
+    )
+
     return StreamingResponse(generator, media_type="text/csv", headers=headers)
 

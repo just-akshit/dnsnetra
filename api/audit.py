@@ -31,6 +31,16 @@ class AuditAction:
     AUTHORIZATION_DENIED = "AUTHORIZATION_DENIED"
     PASSWORD_RESET_CODE_ISSUED = "PASSWORD_RESET_CODE_ISSUED"
     PASSWORD_RESET_COMPLETED = "PASSWORD_RESET_COMPLETED"
+    REPORT_CREATED = "REPORT_CREATED"
+    REPORT_REVIEWED = "REPORT_REVIEWED"
+    REPORT_ARCHIVED = "REPORT_ARCHIVED"
+    REPORT_EXPORTED = "REPORT_EXPORTED"
+    CASE_CREATED = "CASE_CREATED"
+    CASE_UPDATED = "CASE_UPDATED"
+    CASE_ASSIGNED = "CASE_ASSIGNED"
+    CASE_RESOLVED = "CASE_RESOLVED"
+    CASE_CLOSED = "CASE_CLOSED"
+    VERDICT_OVERRIDE = "VERDICT_OVERRIDE"
 
 
 # Redacted / forbidden keys
@@ -65,6 +75,8 @@ def log_audit_event(
     ip_address: Optional[str] = None,
     user_agent: Optional[str] = None,
     metadata: Optional[dict[str, Any]] = None,
+    target_type: Optional[str] = None,
+    target_id: Optional[str] = None,
 ) -> Optional[int]:
     """
     Persist an audit record to the audit_logs table.
@@ -90,11 +102,14 @@ def log_audit_event(
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO audit_logs (user_id, action, target_user_id, ip_address, user_agent, timestamp, metadata)
-                    VALUES (%s, %s, %s, %s, %s, NOW(), %s::jsonb)
+                    INSERT INTO audit_logs
+                        (user_id, action, target_user_id, target_type, target_id,
+                         ip_address, user_agent, timestamp, metadata)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), %s::jsonb)
                     RETURNING id;
                     """,
-                    (user_id, action, target_user_id, valid_ip, user_agent, clean_meta_json),
+                    (user_id, action, target_user_id, target_type, target_id,
+                     valid_ip, user_agent, clean_meta_json),
                 )
                 log_id = cur.fetchone()[0]
                 conn.commit()
@@ -139,6 +154,8 @@ def get_audit_logs(
                     a.action,
                     a.target_user_id,
                     tu.username AS target_username,
+                    a.target_type,
+                    a.target_id,
                     HOST(a.ip_address) AS ip_address,
                     a.user_agent,
                     a.timestamp,
@@ -161,10 +178,12 @@ def get_audit_logs(
                     "action": r[3],
                     "target_user_id": r[4],
                     "target_username": r[5],
-                    "ip_address": r[6],
-                    "user_agent": r[7],
-                    "timestamp": r[8].isoformat() if r[8] else None,
-                    "metadata": r[9] if r[9] else {},
+                    "target_type": r[6],
+                    "target_id": r[7],
+                    "ip_address": r[8],
+                    "user_agent": r[9],
+                    "timestamp": r[10].isoformat() if r[10] else None,
+                    "metadata": r[11] if r[11] else {},
                 }
                 for r in rows
             ]

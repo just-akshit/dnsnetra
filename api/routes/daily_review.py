@@ -10,9 +10,10 @@ import logging
 from typing import Any, Optional
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
+from api.audit import AuditAction, log_audit_event
 from labeler.intel.daily_review import (
     DailyReviewWorker,
     ReviewStatus,
@@ -225,6 +226,7 @@ def get_domain_dossier(domain: str, user: dict[str, Any] = Depends(require_permi
 def set_manual_verdict(
     domain: str,
     payload: VerdictOverrideRequest,
+    request: Request,
     current_user: dict[str, Any] = Depends(require_permission("daily_review:update")),
 ):
     """Admin manual override to mark a domain Clean or Malicious."""
@@ -246,7 +248,7 @@ def set_manual_verdict(
             otx_summary=None,
         )
         logger.info("Admin %s marked %s as CLEAN (reason: %s)", current_user.get("email"), canonical, payload.reason)
-        return {
+        response = {
             "success": True,
             "domain": canonical,
             "verdict": "CLEAN",
@@ -266,7 +268,7 @@ def set_manual_verdict(
             otx_result=None,
         )
         logger.info("Admin %s marked %s as MALICIOUS (reason: %s)", current_user.get("email"), canonical, payload.reason)
-        return {
+        response = {
             "success": True,
             "domain": canonical,
             "verdict": "MALICIOUS",
@@ -278,6 +280,22 @@ def set_manual_verdict(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Verdict must be either 'clean' or 'malicious'.",
         )
+
+    log_audit_event(
+        action=AuditAction.VERDICT_OVERRIDE,
+        user_id=current_user["id"],
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        target_type="domain",
+        target_id=canonical,
+        metadata={
+            "verdict": verdict_choice.upper(),
+            "reason": payload.reason,
+            "confidence": payload.confidence,
+        },
+    )
+
+    return response
 
 
 @router.post("/{domain}/trigger")

@@ -32,6 +32,7 @@ from pydantic import BaseModel
 from api.auth_config import validate_auth_config
 from api.routes.analytics import router as analytics_router
 from api.routes.auth import router as auth_router
+from api.routes.cases import router as cases_router
 from api.routes.clients import router as clients_router
 from api.routes.daily_review import router as daily_review_router
 from api.routes.dashboard import router as dashboard_router
@@ -159,6 +160,7 @@ async def invariant_violation_handler(request: Request, exc: InvariantViolationE
 # Routers Registration
 # ---------------------------------------------------------------------------
 app.include_router(auth_router)
+app.include_router(cases_router)
 app.include_router(dashboard_router)
 app.include_router(reports_router)
 app.include_router(reports_saved_router)

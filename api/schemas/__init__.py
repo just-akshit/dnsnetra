@@ -4,6 +4,15 @@ api/schemas/__init__.py
 Central export for all API schemas.
 """
 
+from .cases import (
+    CaseCommentRequest,
+    CaseCreateRequest,
+    CaseDetail,
+    CaseListResponse,
+    CaseReportLinkRequest,
+    CaseSummary,
+    CaseUpdateRequest,
+)
 from .common import (
     CanonicalVerdict,
     ErrorResponse,
@@ -46,6 +55,13 @@ from .analytics import (
 )
 
 __all__ = [
+    "CaseCommentRequest",
+    "CaseCreateRequest",
+    "CaseDetail",
+    "CaseListResponse",
+    "CaseReportLinkRequest",
+    "CaseSummary",
+    "CaseUpdateRequest",
     "CanonicalVerdict",
     "VerdictBreakdown",
     "PaginatedResponse",

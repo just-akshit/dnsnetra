@@ -78,10 +78,14 @@ SEARCH_WINDOW_SECONDS = 60
 
 
 def enforce_search_rate_limit(request: Request) -> None:
-    """Throttle bar searches: one keystroke fans out to three list endpoints."""
+    """Throttle bar searches: one keystroke fans out to three list endpoints.
+
+    The budget is per endpoint, not shared: a shared bucket made 20 keystrokes
+    exhaust all three and the bar reported "partial results" during normal use.
+    """
     client_ip = get_client_ip(request)
     is_allowed, retry_after = check_rate_limit(
-        key=client_ip,
+        key=f"{client_ip}:{request.url.path}",
         action="search",
         max_requests=SEARCH_MAX_REQUESTS,
         window_seconds=SEARCH_WINDOW_SECONDS,

@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 
 from api.main import app
 from api.rate_limiter import reset_rate_limits
+from investigation.live.models import IndicatorVerdict, LiveIntelReport
 
 client = TestClient(app)
 
@@ -234,6 +235,48 @@ def test_investigation_refresh_flag_bypasses_live_cache(monkeypatch, admin_heade
 
     assert res.status_code == 200
     assert seen == [True]
+
+
+def test_typing_a_long_domain_does_not_trip_the_search_limiter(admin_headers):
+    """One keystroke fans out to three endpoints; that must not eat the budget.
+
+    A 25-character domain typed at the bar's debounce rate used to exhaust a
+    single shared 60/min bucket and surface "partial results" during normal use.
+    """
+    for length in range(2, 27):
+        for path in ("/api/v1/domains", "/api/v1/clients", "/api/v1/reports/queries"):
+            res = client.get(path, headers=admin_headers, params={"search": "a" * length})
+            assert res.status_code == 200, f"{path} limited at keystroke {length}: {res.text}"
+
+
+def test_search_then_open_unseen_domain_reaches_a_dossier(monkeypatch, admin_headers):
+    """Happy path through the bar, without a browser: search misses, dossier still opens."""
+    term = "unseen-e2e.example"
+
+    assert _items("/api/v1/domains", admin_headers, search=term)["total"] == 0
+
+    from api.routes import investigation as investigation_routes
+
+    class FakeLiveIntel:
+        def lookup_domain(self, value, refresh=False):
+            return LiveIntelReport(
+                indicator=value,
+                kind="domain",
+                verdict=IndicatorVerdict(state="unknown", reasons=["no data"]),
+                checked_at="2026-11-08T00:00:00Z",
+            )
+
+        def lookup_ip(self, value, refresh=False):
+            return None
+
+    monkeypatch.setattr(investigation_routes, "LiveIntelService", FakeLiveIntel)
+
+    res = client.get(f"/api/v1/investigation/domains/{term}", headers=admin_headers)
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["observed_in_network"] is False
+    assert body["live_intel"]["verdict"]["state"] == "unknown"
 
 
 def test_search_is_rate_limited(monkeypatch, admin_headers):

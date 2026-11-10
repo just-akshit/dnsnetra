@@ -40,7 +40,7 @@ describe("ReportDetailPage", () => {
 
   it("renders the snapshot and marks it reviewed", async () => {
     vi.spyOn(dnsnetraApi, "getSavedReport").mockResolvedValue(report as any)
-    vi.spyOn(dnsnetraApi, "reviewSavedReport").mockResolvedValue({
+    const reviewSpy = vi.spyOn(dnsnetraApi, "reviewSavedReport").mockResolvedValue({
       ...report,
       status: "reviewed",
     } as any)
@@ -55,6 +55,28 @@ describe("ReportDetailPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Mark reviewed" }))
 
     expect(await screen.findByText("reviewed")).toBeInTheDocument()
+    expect(reviewSpy).toHaveBeenCalledWith("RPT-2026-000001", {
+      status: "reviewed",
+      conclusion: "Not observed locally.",
+      verdict: undefined,
+    })
+  })
+
+  it("seeds the conclusion and shows review metadata for a reviewed report", async () => {
+    vi.spyOn(dnsnetraApi, "getSavedReport").mockResolvedValue({
+      ...report,
+      status: "reviewed",
+      conclusion: "Known benign resolver.",
+      reviewed_at: "2026-11-11T12:00:00Z",
+      reviewed_by: 7,
+    } as any)
+
+    render(<ReportDetailPage />)
+
+    expect(await screen.findByDisplayValue("Known benign resolver.")).toBeInTheDocument()
+    expect(screen.getByText(/2026-11-11T12:00:00Z/)).toBeInTheDocument()
+    expect(screen.getByText(/by 7/)).toBeInTheDocument()
+    expect(screen.getByText("reviewed")).toBeInTheDocument()
   })
 
   it("exports XLSX", async () => {

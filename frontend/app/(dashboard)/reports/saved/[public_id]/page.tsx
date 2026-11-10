@@ -28,6 +28,7 @@ export default function ReportDetailPage() {
   const [error, setError] = React.useState<string | null>(null)
   const [conclusion, setConclusion] = React.useState("")
   const [saving, setSaving] = React.useState(false)
+  const [exporting, setExporting] = React.useState<"csv" | "xlsx" | null>(null)
 
   const loadReport = React.useCallback(
     () =>
@@ -35,6 +36,7 @@ export default function ReportDetailPage() {
         .getSavedReport(publicId)
         .then((data) => {
           setReport(data)
+          setConclusion(data.conclusion ?? "")
           setError(null)
         })
         .catch(() => {
@@ -63,6 +65,18 @@ export default function ReportDetailPage() {
       toast.error("Review failed.")
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function exportReport(format: "csv" | "xlsx") {
+    setExporting(format)
+    try {
+      await dnsnetraApi.downloadSavedReport(publicId, format)
+      toast.success("Export started.")
+    } catch {
+      toast.error("Export failed.")
+    } finally {
+      setExporting(null)
     }
   }
 
@@ -98,24 +112,40 @@ export default function ReportDetailPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => dnsnetraApi.downloadSavedReport(publicId, "csv")}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => exportReport("csv")}
+            disabled={exporting !== null}
+          >
             Export CSV
           </Button>
-          <Button variant="outline" size="sm" onClick={() => dnsnetraApi.downloadSavedReport(publicId, "xlsx")}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => exportReport("xlsx")}
+            disabled={exporting !== null}
+          >
             Export XLSX
           </Button>
           <Badge variant="outline">{report.status}</Badge>
+          {report.reviewed_at && (
+            <span className="font-mono text-[10px] text-muted-foreground">
+              {report.reviewed_at}
+              {report.reviewed_by != null ? ` · by ${report.reviewed_by}` : ""}
+            </span>
+          )}
         </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader><CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">Total queries</CardTitle></CardHeader>
-          <CardContent><p className="font-mono text-2xl font-semibold">{profile.total_queries ?? 0}</p></CardContent>
+          <CardContent><p className="font-mono text-2xl font-semibold">{profile.total_queries ?? "—"}</p></CardContent>
         </Card>
         <Card>
           <CardHeader><CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">Unique clients</CardTitle></CardHeader>
-          <CardContent><p className="font-mono text-2xl font-semibold">{profile.unique_clients ?? 0}</p></CardContent>
+          <CardContent><p className="font-mono text-2xl font-semibold">{profile.unique_clients ?? "—"}</p></CardContent>
         </Card>
         <Card>
           <CardHeader><CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">Live verdict</CardTitle></CardHeader>
@@ -138,8 +168,13 @@ export default function ReportDetailPage() {
             placeholder="What did you conclude?"
           />
           <div>
-            <Button size="sm" onClick={markReviewed} disabled={saving || !conclusion.trim()}>
-              Mark reviewed
+            <Button
+              size="sm"
+              onClick={markReviewed}
+              disabled={saving || !conclusion.trim()}
+              aria-busy={saving}
+            >
+              {saving ? "Saving…" : "Mark reviewed"}
             </Button>
           </div>
         </CardContent>

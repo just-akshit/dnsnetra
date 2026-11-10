@@ -460,6 +460,37 @@ describe("GlobalIntelligenceSearch Component", () => {
     ).toBeInTheDocument()
   })
 
+  it("does not leave the spinner stuck when the dialog closes mid-search", async () => {
+    // Never resolves: the request is still in flight when the user closes.
+    vi.spyOn(dnsnetraApi, "searchIntelligence").mockImplementation(
+      () => new Promise(() => {}) as any
+    )
+
+    render(<GlobalIntelligenceSearch />)
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Search DNSNetra Intelligence" })[0]
+    )
+
+    const input = await screen.findByPlaceholderText("Search any domain or IP...")
+    fireEvent.change(input, { target: { value: "slow.example" } })
+    expect(
+      await screen.findByText("Searching DNS intelligence...")
+    ).toBeInTheDocument()
+
+    fireEvent.keyDown(input, { key: "Escape" })
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Search DNSNetra Intelligence" })[0]
+    )
+
+    expect(
+      await screen.findByText("Global DNSNetra SOC Intelligence")
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText("Searching DNS intelligence...")
+    ).not.toBeInTheDocument()
+  })
+
   it("ignores a stale response that arrives after a newer query", async () => {
     let resolveSlow: (value: any) => void = () => {}
     let resolveFast: (value: any) => void = () => {}

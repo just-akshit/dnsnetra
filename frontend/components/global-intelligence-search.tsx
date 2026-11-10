@@ -85,6 +85,7 @@ export function GlobalIntelligenceSearch() {
     setOpen(nextOpen)
     if (!nextOpen) {
       requestSeqRef.current += 1
+      setLoading(false)
       setQuery("")
       setResults({ domains: [], clients: [], queries: [] })
       setError(null)

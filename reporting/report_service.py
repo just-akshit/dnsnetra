@@ -2,16 +2,25 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 from investigation.service import InvestigationService
 from investigation.live.service import LiveIntelService
-from time_engine import TemporalDefaultPolicy, format_iso8601_utc, resolve_time_range
+from time_engine import (
+    InvalidTimeRangeError,
+    TemporalDefaultPolicy,
+    TimeEngineValidationError,
+    format_iso8601_utc,
+    resolve_time_range,
+)
 
 from .report_repository import ReportRepository
-from .report_schemas import ReportStatus, SavedReportDetail, SavedReportSummary
+from .report_schemas import ReportStatus, SavedReportDetail
 from .service import ReportingService
+
+logger = logging.getLogger(__name__)
 
 RECENT_QUERY_CAP = 500
 
@@ -25,7 +34,9 @@ class ReportService:
         )
         self.reporting = reporting_service or ReportingService()
 
-    def _window(self, window, start_time, end_time):
+    def _window(self, window, start_time, end_time, time_range=None):
+        if time_range is not None:
+            return time_range
         tr = resolve_time_range(
             window=window,
             start_time=start_time,
@@ -35,8 +46,9 @@ class ReportService:
         return tr
 
     def build_snapshot(self, *, kind, entity, window, start_time, end_time,
-                       filters, refresh=False) -> dict[str, Any]:
-        tr = self._window(window, start_time, end_time)
+                       filters, refresh=False, time_range=None) -> dict[str, Any]:
+        filters = filters or {}
+        tr = self._window(window, start_time, end_time, time_range=time_range)
         window_meta = {
             "start": format_iso8601_utc(tr.start) if tr.start else None,
             "end": format_iso8601_utc(tr.end) if tr.end else None,
@@ -61,18 +73,16 @@ class ReportService:
             live = dossier_data.get("live_intel") or {}
             profile = dossier_data.get("profile") or {}
 
-            summary = self.reporting.get_summary(
-                window=window, start_time=start_time, end_time=end_time
-            )
+            summary = self.reporting.get_summary(time_range=tr)
             try:
-                series = self.reporting.get_timeseries(
-                    window=window, start_time=start_time, end_time=end_time,
-                    bucket="1h",
-                )
+                series = self.reporting.get_timeseries(time_range=tr)
                 timeline = [bucket.model_dump(mode="json") for bucket in series.buckets]
-            except Exception:
+            except (InvalidTimeRangeError, TimeEngineValidationError) as exc:
                 # All-time entity reports have no valid timeseries; state it
                 # rather than inventing an empty chart.
+                logger.warning(
+                    "Timeline unavailable for %s %r: %s", kind, entity, exc
+                )
                 timeline = []
 
             return {
@@ -100,24 +110,20 @@ class ReportService:
                 },
             }
 
-        summary = self.reporting.get_summary(
-            window=window, start_time=start_time, end_time=end_time
-        )
+        summary = self.reporting.get_summary(time_range=tr)
         preview = self.reporting.get_queries(
             verdict=filters.get("verdict"),
             search=filters.get("search"),
             client_ip=filters.get("client_ip"),
             domain=filters.get("domain"),
             query_type=filters.get("query_type"),
-            window=window,
-            start_time=start_time,
-            end_time=end_time,
+            time_range=tr,
             limit=RECENT_QUERY_CAP,
             offset=0,
         )
         return {
             "schema_version": 1,
-            "kind": "query_set",
+            "kind": kind,
             "entity": None,
             "window": window_meta,
             "filters": filters,
@@ -132,16 +138,13 @@ class ReportService:
 
     def create(self, *, kind, entity, window, start_time, end_time, filters,
                title, user_id, refresh=False) -> SavedReportDetail:
+        filters = filters or {}
+        tr = self._window(window, start_time, end_time)
         snapshot = self.build_snapshot(
             kind=kind, entity=entity, window=window, start_time=start_time,
-            end_time=end_time, filters=filters, refresh=refresh,
+            end_time=end_time, filters=filters, refresh=refresh, time_range=tr,
         )
         entity_type = snapshot["entity"]["type"] if snapshot.get("entity") else None
-        row_count = (
-            snapshot["row_count"] if "row_count" in snapshot
-            else len(snapshot.get("preview_queries", []))
-        )
-        tr = self._window(window, start_time, end_time)
         return self.repository.create(
             kind=kind,
             entity_type=entity_type,
@@ -151,7 +154,7 @@ class ReportService:
             window_end=tr.end,
             filters=filters,
             snapshot=snapshot,
-            row_count=row_count,
+            row_count=snapshot["row_count"],
             created_by=user_id,
         )
 

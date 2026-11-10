@@ -35,6 +35,14 @@ _BASE_SELECT = """
     LEFT JOIN cases c ON c.id = r.case_id
 """
 
+_SUMMARY_SELECT = """
+    SELECT r.id, r.public_id, r.kind, r.entity_type, r.entity_value, r.title,
+           r.status, r.verdict, r.created_by, r.reviewed_at, r.created_at,
+           c.public_id AS case_public_id
+    FROM reports r
+    LEFT JOIN cases c ON c.id = r.case_id
+"""
+
 
 class ReportRepository:
     def __init__(self, connection_factory=None) -> None:
@@ -67,7 +75,6 @@ class ReportRepository:
                 )
                 row = dict(cur.fetchone())
             conn.commit()
-        row["case_public_id"] = None
         return _detail(row)
 
     def list(self, *, status=None, kind=None, entity=None, created_by=None,
@@ -92,7 +99,7 @@ class ReportRepository:
                 cur.execute(f"SELECT COUNT(*) AS count FROM reports r {where};", tuple(params))
                 total = cur.fetchone()["count"]
                 cur.execute(
-                    f"{_BASE_SELECT} {where} ORDER BY r.created_at DESC LIMIT %s OFFSET %s;",
+                    f"{_SUMMARY_SELECT} {where} ORDER BY r.created_at DESC LIMIT %s OFFSET %s;",
                     tuple(params + [limit, offset]),
                 )
                 rows = [dict(r) for r in cur.fetchall()]
@@ -118,20 +125,22 @@ class ReportRepository:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute(
                     """
-                    UPDATE reports
-                    SET status = %s, verdict = %s, conclusion = %s,
-                        reviewed_by = %s, reviewed_at = NOW(), updated_at = NOW()
-                    WHERE public_id = %s
-                    RETURNING *;
+                    WITH updated AS (
+                        UPDATE reports
+                        SET status = %s, verdict = %s, conclusion = %s,
+                            reviewed_by = %s, reviewed_at = NOW(), updated_at = NOW()
+                        WHERE public_id = %s
+                        RETURNING *
+                    )
+                    SELECT u.*, c.public_id AS case_public_id
+                    FROM updated u
+                    LEFT JOIN cases c ON c.id = u.case_id;
                     """,
                     (status, verdict, conclusion, reviewer_id, public_id),
                 )
                 row = cur.fetchone()
             conn.commit()
-        if not row:
-            return None
-        report = _detail(dict(row))
-        return self.get(public_id) if report else None
+        return _detail(dict(row)) if row else None
 
     def archive(self, public_id: str) -> bool:
         with self._get_conn() as conn:

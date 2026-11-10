@@ -16,6 +16,7 @@ import {
   ExternalLinkIcon,
   LaptopIcon,
 } from "lucide-react"
+import { toast } from "sonner"
 import { dnsnetraApi, ApiError, type ClientDetail } from "@/lib/data-table/api-client"
 import { formatDnsnetraTimestamp, formatNumber } from "@/lib/data-table/formatters"
 import { DataTableStatus } from "@/components/data-table/data-table-status"
@@ -172,6 +173,25 @@ export default function ClientProfilePage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              try {
+                const report = await dnsnetraApi.createSavedReport({
+                  kind: "entity_client",
+                  entity: clientIp,
+                  window: "7d",
+                  title: `${clientIp} — 7 day review`,
+                })
+                toast.success(`Report ${report.public_id} created.`)
+              } catch {
+                toast.error("Could not create a report.")
+              }
+            }}
+          >
+            Create report
+          </Button>
           <Button
             variant="outline"
             size="sm"

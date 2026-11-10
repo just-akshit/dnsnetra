@@ -16,6 +16,7 @@ import {
   DatabaseIcon,
   GlobeIcon,
 } from "lucide-react"
+import { toast } from "sonner"
 import { LiveIntelSection } from "@/components/intelligence/live-verdict"
 import { dnsnetraApi, ApiError, type DomainDetail } from "@/lib/data-table/api-client"
 import { formatDnsnetraTimestamp, formatNumber } from "@/lib/data-table/formatters"
@@ -168,6 +169,25 @@ export default function DomainProfilePage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              try {
+                const report = await dnsnetraApi.createSavedReport({
+                  kind: "entity_domain",
+                  entity: domain,
+                  window: "7d",
+                  title: `${domain} — 7 day review`,
+                })
+                toast.success(`Report ${report.public_id} created.`)
+              } catch {
+                toast.error("Could not create a report.")
+              }
+            }}
+          >
+            Create report
+          </Button>
           <Button
             variant="outline"
             size="sm"

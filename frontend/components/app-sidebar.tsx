@@ -65,6 +65,16 @@ const navAnalysis = [
     url: "/daily-review",
     icon: <CalendarCheckIcon />,
   },
+  {
+    title: "Saved Reports",
+    url: "/reports/saved",
+    icon: <FileTextIcon />,
+  },
+  {
+    title: "Cases",
+    url: "/cases",
+    icon: <ShieldIcon />,
+  },
 ]
 
 const navSystem = [

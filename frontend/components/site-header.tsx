@@ -10,6 +10,8 @@ import { GlobalIntelligenceSearch } from "@/components/global-intelligence-searc
 const pageTitles: Record<string, string> = {
   "/dashboard": "Dashboard",
   "/reports": "Reports",
+  "/reports/saved": "Saved Reports",
+  "/cases": "Cases",
   "/clients": "Clients",
   "/domains": "Domains",
   "/queries": "Queries",
@@ -24,6 +26,8 @@ function getHeaderTitle(pathname: string): string {
   if (pathname.startsWith("/domains/")) return "Domain Profile"
   if (pathname.startsWith("/clients/")) return "Client Profile"
   if (pathname.startsWith("/queries/")) return "Query Telemetry"
+  if (pathname.startsWith("/reports/saved/")) return "Saved Report"
+  if (pathname.startsWith("/cases/")) return "Case"
   return "DNSNetra"
 }
 

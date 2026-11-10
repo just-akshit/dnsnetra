@@ -21,6 +21,7 @@ export interface DailyReviewColumnOptions {
   onEntityClick?: (entity: EntityIdentifier) => void
   onPromoteClean?: (domain: string) => void
   onPromoteMalicious?: (domain: string) => void
+  onCreateCase?: (domain: string) => void
 }
 
 export function createDailyReviewColumns(options: DailyReviewColumnOptions = {}) {
@@ -156,6 +157,11 @@ export function createDailyReviewColumns(options: DailyReviewColumnOptions = {})
                     id: item.domain,
                     label: item.domain,
                   }),
+              },
+              {
+                id: "create-case",
+                label: "Create Case",
+                onClick: () => options.onCreateCase?.(item.domain),
               },
               {
                 id: "mark-clean",

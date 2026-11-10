@@ -124,14 +124,29 @@ function DailyReviewContent() {
     [handleRetry]
   )
 
+  const handleCreateCase = React.useCallback(async (domain: string) => {
+    try {
+      const created = await dnsnetraApi.createCase({
+        title: `Review ${domain}`,
+        priority: "medium",
+        entity_type: "domain",
+        entity_value: domain,
+      })
+      toast.success(`Case ${created.public_id} opened.`)
+    } catch {
+      toast.error("Could not open a case.")
+    }
+  }, [])
+
   const columns = React.useMemo(
     () =>
       createDailyReviewColumns({
         onEntityClick: (entity) => setActiveEntity(entity),
         onPromoteClean: handlePromoteClean,
         onPromoteMalicious: handlePromoteMalicious,
+        onCreateCase: handleCreateCase,
       }),
-    [handlePromoteClean, handlePromoteMalicious]
+    [handlePromoteClean, handlePromoteMalicious, handleCreateCase]
   )
 
   return (

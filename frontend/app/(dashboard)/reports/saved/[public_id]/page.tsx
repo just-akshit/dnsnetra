@@ -115,6 +115,26 @@ export default function ReportDetailPage() {
           <Button
             variant="outline"
             size="sm"
+            onClick={async () => {
+              try {
+                const created = await dnsnetraApi.createCase({
+                  title: `Investigate ${report.entity_value ?? report.title}`,
+                  priority: "medium",
+                  entity_type: report.entity_type ?? undefined,
+                  entity_value: report.entity_value ?? undefined,
+                  report_id: report.public_id,
+                })
+                toast.success(`Case ${created.public_id} opened.`)
+              } catch {
+                toast.error("Could not open a case.")
+              }
+            }}
+          >
+            Open case
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => exportReport("csv")}
             disabled={exporting !== null}
           >

@@ -63,8 +63,68 @@ export interface DailyReviewItem {
   is_due: boolean
 }
 
+export interface LiveProviderEvidence {
+  provider: string
+  status: string
+  malicious: number
+  suspicious: number
+  harmless: number
+  undetected: number
+  total: number
+  pulse_count: number
+  confidence: number
+  error?: string | null
+  details?: Record<string, unknown>
+}
+
+export interface LiveIndicatorVerdict {
+  state: string
+  confidence: number
+  reasons: string[]
+  sources_with_data: number
+  sources_queried: number
+}
+
+export interface LiveIntelReport {
+  indicator: string
+  kind: string
+  verdict: LiveIndicatorVerdict
+  providers: LiveProviderEvidence[]
+  registration?: {
+    status: string
+    source?: string
+    registrar?: string | null
+    registrar_id?: string | null
+    created_at?: string | null
+    updated_at?: string | null
+    expires_at?: string | null
+    domain_status?: string[]
+    nameservers?: string[]
+    error?: string | null
+  } | null
+  dns_records?: {
+    status: string
+    a?: string[]
+    aaaa?: string[]
+    cname?: string[]
+    ns?: string[]
+    mx?: Array<{ priority: number; exchange: string }>
+    error?: string | null
+  } | null
+  ip_context?: {
+    asn?: number | null
+    as_owner?: string | null
+    country?: string | null
+    network?: string | null
+    reputation?: number | null
+  } | null
+  checked_at: string
+}
+
 export interface DomainDetail {
   domain: string
+  observed_in_network: boolean
+  live_intel?: LiveIntelReport | null
   profile: {
     domain: string
     first_seen: string
@@ -79,7 +139,7 @@ export interface DomainDetail {
     last_client_ip?: string | null
     last_label?: string | null
     last_ti_source?: string | null
-  }
+  } | null
   top_querying_clients: Array<{
     client_ip: string
     visit_count: number
@@ -153,6 +213,8 @@ export interface DomainDetail {
 
 export interface ClientDetail {
   client_ip: string
+  observed_in_network: boolean
+  live_intel?: LiveIntelReport | null
   profile: {
     client_ip: string
     first_seen: string
@@ -165,7 +227,7 @@ export interface ClientDetail {
     unknown_queries: number
     last_domain?: string | null
     last_query_type?: string | null
-  }
+  } | null
   top_domains: Array<{
     domain: string
     visit_count: number
@@ -313,6 +375,17 @@ export interface DomainAnalyticsResponse {
 
 let currentApiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
+/** Error carrying the HTTP status so callers can distinguish 404 from outages. */
+export class ApiError extends Error {
+  status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = "ApiError"
+    this.status = status
+  }
+}
+
 /** Session is the backend's HttpOnly cookie; an expired one sends the user to /login. */
 function redirectToLogin(): void {
   if (typeof window === "undefined") return
@@ -374,16 +447,20 @@ async function apiFetch<T>(
 
   if (!res.ok) {
     const errorText = await res.text().catch(() => "Unknown error")
-    throw new Error(`API error (${res.status}): ${errorText}`)
+    throw new ApiError(res.status, `API error (${res.status}): ${errorText}`)
   }
 
   return res.json()
 }
 
+export type SearchCategory = "domains" | "clients" | "queries"
+
 export interface GlobalSearchResult {
   domains: DomainItem[]
   clients: ClientItem[]
   queries: QueryItem[]
+  /** Categories whose request failed; the rest of the result is still usable. */
+  unavailable?: SearchCategory[]
 }
 
 export const dnsnetraApi = {
@@ -419,8 +496,11 @@ export const dnsnetraApi = {
   },
 
   /** Get authoritative domain investigation dossier (strictly no temporal params) */
-  async getDomainInvestigation(domain: string): Promise<DomainDetail> {
-    return apiFetch<DomainDetail>(`/api/v1/investigation/domains/${encodeURIComponent(domain)}`)
+  async getDomainInvestigation(domain: string, refresh = false): Promise<DomainDetail> {
+    return apiFetch<DomainDetail>(
+      `/api/v1/investigation/domains/${encodeURIComponent(domain)}`,
+      { refresh: refresh ? true : undefined }
+    )
   },
 
   /** List clients */
@@ -453,8 +533,11 @@ export const dnsnetraApi = {
   },
 
   /** Get authoritative client investigation dossier (strictly no temporal params) */
-  async getClientInvestigation(clientIp: string): Promise<ClientDetail> {
-    return apiFetch<ClientDetail>(`/api/v1/investigation/clients/${encodeURIComponent(clientIp)}`)
+  async getClientInvestigation(clientIp: string, refresh = false): Promise<ClientDetail> {
+    return apiFetch<ClientDetail>(
+      `/api/v1/investigation/clients/${encodeURIComponent(clientIp)}`,
+      { refresh: refresh ? true : undefined }
+    )
   },
 
   /** List DNS queries log */
@@ -703,6 +786,12 @@ export const dnsnetraApi = {
     const rawQueries =
       queriesRes.status === "fulfilled" ? queriesRes.value.items ?? [] : []
 
+    const unavailable = [
+      domainsRes.status === "rejected" ? "domains" : null,
+      clientsRes.status === "rejected" ? "clients" : null,
+      queriesRes.status === "rejected" ? "queries" : null,
+    ].filter((category): category is SearchCategory => category !== null)
+
     const lower = trimmed.toLowerCase()
 
     // 1. Domains: Exact match -> Prefix match -> Query volume
@@ -754,6 +843,7 @@ export const dnsnetraApi = {
       domains: sortedDomains,
       clients: sortedClients,
       queries: sortedQueries,
+      ...(unavailable.length > 0 ? { unavailable } : {}),
     }
   },
 }

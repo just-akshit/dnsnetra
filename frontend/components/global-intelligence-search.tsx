@@ -12,7 +12,6 @@ import {
   AlertCircleIcon,
   RefreshCwIcon,
   Loader2Icon,
-  SearchXIcon,
   ShieldIcon,
   LaptopIcon,
 } from "lucide-react"
@@ -34,17 +33,23 @@ import {
   Dialog,
   DialogContent,
 } from "@/components/ui/dialog"
+import {
+  entityHref,
+  parseEntityQuery,
+  type SearchEntity,
+} from "@/lib/search/entity"
 import { cn } from "cn"
 
+type DirectEntity = Extract<SearchEntity, { kind: "domain" | "ip" }>
+
+// One character fans out to three full ILIKE scans for almost no signal.
+const MIN_SEARCH_LENGTH = 2
+
 export type FlatSearchItem =
+  | { type: "direct"; id: string; data: DirectEntity }
   | { type: "domain"; id: string; data: DomainItem }
   | { type: "client"; id: string; data: ClientItem }
   | { type: "query"; id: string; data: QueryItem }
-
-function isIpLike(query: string): boolean {
-  const trimmed = query.trim()
-  return /^[0-9.:]+$/.test(trimmed) && trimmed.length > 0
-}
 
 function useIsMac() {
   return React.useSyncExternalStore(
@@ -73,10 +78,13 @@ export function GlobalIntelligenceSearch() {
 
   const inputRef = React.useRef<HTMLInputElement | null>(null)
   const activeItemRef = React.useRef<HTMLDivElement | null>(null)
+  // Every query change bumps this; responses from older requests are discarded.
+  const requestSeqRef = React.useRef(0)
 
   const handleOpenChange = React.useCallback((nextOpen: boolean) => {
     setOpen(nextOpen)
     if (!nextOpen) {
+      requestSeqRef.current += 1
       setQuery("")
       setResults({ domains: [], clients: [], queries: [] })
       setError(null)
@@ -109,20 +117,23 @@ export function GlobalIntelligenceSearch() {
   // Debounced search query
   React.useEffect(() => {
     const trimmed = query.trim()
-    if (!trimmed) {
+    if (trimmed.length < MIN_SEARCH_LENGTH) {
       return
     }
 
     const timeout = setTimeout(async () => {
+      const seq = ++requestSeqRef.current
       try {
         const res = await dnsnetraApi.searchIntelligence(trimmed, 5)
+        if (seq !== requestSeqRef.current) return
         setResults(res)
         setError(null)
         setSelectedIndex(0)
       } catch {
+        if (seq !== requestSeqRef.current) return
         setError("Unable to search DNS intelligence. Try again.")
       } finally {
-        setLoading(false)
+        if (seq === requestSeqRef.current) setLoading(false)
       }
     }, 250)
 
@@ -131,29 +142,33 @@ export function GlobalIntelligenceSearch() {
 
   const handleRetry = React.useCallback(async () => {
     const trimmed = query.trim()
-    if (!trimmed) return
+    if (trimmed.length < MIN_SEARCH_LENGTH) return
+    const seq = ++requestSeqRef.current
     setLoading(true)
     setError(null)
     try {
       const res = await dnsnetraApi.searchIntelligence(trimmed, 5)
+      if (seq !== requestSeqRef.current) return
       setResults(res)
       setError(null)
       setSelectedIndex(0)
     } catch {
+      if (seq !== requestSeqRef.current) return
       setError("Unable to search DNS intelligence. Try again.")
     } finally {
-      setLoading(false)
+      if (seq === requestSeqRef.current) setLoading(false)
     }
   }, [query])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value
+    requestSeqRef.current += 1
     setQuery(val)
-    if (!val.trim()) {
-      setResults({ domains: [], clients: [], queries: [] })
+    setSelectedIndex(0)
+    setResults({ domains: [], clients: [], queries: [] })
+    if (val.trim().length < MIN_SEARCH_LENGTH) {
       setLoading(false)
       setError(null)
-      setSelectedIndex(0)
     } else {
       setLoading(true)
       setError(null)
@@ -161,6 +176,7 @@ export function GlobalIntelligenceSearch() {
   }
 
   const handleClear = () => {
+    requestSeqRef.current += 1
     setQuery("")
     setResults({ domains: [], clients: [], queries: [] })
     setError(null)
@@ -168,10 +184,20 @@ export function GlobalIntelligenceSearch() {
     inputRef.current?.focus()
   }
 
-  // Flatten results according to query heuristic (IP-like shows clients first)
-  const isIpQuery = isIpLike(query)
+  // Typed input is always treated as an investable entity (VT-style search).
+  const parsedQuery = React.useMemo(() => parseEntityQuery(query), [query])
+  const directEntity = parsedQuery.kind === "invalid" ? null : parsedQuery
+  const isIpQuery = directEntity?.kind === "ip"
+
   const flatItems = React.useMemo<FlatSearchItem[]>(() => {
     const items: FlatSearchItem[] = []
+    if (directEntity) {
+      items.push({
+        type: "direct",
+        id: `direct-${directEntity.value}`,
+        data: directEntity,
+      })
+    }
     if (isIpQuery) {
       results.clients.forEach((c) =>
         items.push({ type: "client", id: `client-${c.client_ip}`, data: c })
@@ -191,7 +217,7 @@ export function GlobalIntelligenceSearch() {
       items.push({ type: "query", id: `query-${q.id}`, data: q })
     )
     return items
-  }, [results, isIpQuery])
+  }, [results, isIpQuery, directEntity])
 
   const safeSelectedIndex =
     flatItems.length > 0
@@ -210,6 +236,9 @@ export function GlobalIntelligenceSearch() {
     (item: FlatSearchItem) => {
       handleOpenChange(false)
       switch (item.type) {
+        case "direct":
+          router.push(entityHref(item.data))
+          break
         case "domain":
           router.push(`/domains/${encodeURIComponent(item.data.domain)}`)
           break
@@ -251,8 +280,13 @@ export function GlobalIntelligenceSearch() {
     }
   }
 
-  const hasResults = flatItems.length > 0
-  const hasSearched = query.trim().length > 0 && !loading
+  const hasCategorizedResults =
+    results.domains.length + results.clients.length + results.queries.length > 0
+  const showInvalid =
+    !loading &&
+    query.trim().length >= MIN_SEARCH_LENGTH &&
+    parsedQuery.kind === "invalid" &&
+    !hasCategorizedResults
 
   return (
     <>
@@ -273,7 +307,7 @@ export function GlobalIntelligenceSearch() {
         >
           <div className="flex items-center gap-2 truncate">
             <SearchIcon className="size-3.5 shrink-0 text-muted-foreground" />
-            <span className="truncate">Search domain, client, query...</span>
+            <span className="truncate">Search any domain or IP...</span>
           </div>
           <kbd className="pointer-events-none inline-flex h-4.5 select-none items-center gap-0.5 rounded border border-border/80 bg-background/80 px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
             {isMac ? "⌘K" : "Ctrl K"}
@@ -310,11 +344,12 @@ export function GlobalIntelligenceSearch() {
               value={query}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder="Search domain, client, query..."
+              placeholder="Search any domain or IP..."
               className={cn(
                 "h-11 w-full bg-transparent text-sm text-foreground",
                 "placeholder:text-muted-foreground focus:outline-none font-sans"
               )}
+              aria-label="Search any domain or IP address"
             />
             {loading && (
               <Loader2Icon className="size-4 shrink-0 animate-spin text-primary mr-2" />
@@ -336,9 +371,106 @@ export function GlobalIntelligenceSearch() {
 
           {/* Body Content Area */}
           <div className="flex-1 overflow-y-auto max-h-[60vh] divide-y divide-border/40">
+            {/* Partial failure: keep whatever loaded, name what didn't */}
+            {!loading && !error && (results.unavailable?.length ?? 0) > 0 && (
+              <div className="flex items-center gap-2 px-3.5 py-2 text-[11px] text-amber-700 dark:text-amber-400 bg-amber-500/5">
+                <AlertCircleIcon className="size-3.5 shrink-0" />
+                <span>
+                  Partial results — {results.unavailable!.join(", ")} unavailable.
+                </span>
+              </div>
+            )}
+            {/* Direct entity lookup: always available for any valid domain/IP */}
+            {directEntity && (
+              <div className="flex flex-col">
+                <div className="flex items-center justify-between px-3 py-1.5 bg-primary/5 border-b border-border/40 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                  <span className="flex items-center gap-1.5 font-semibold text-foreground/80">
+                    {directEntity.kind === "ip" ? (
+                      <LaptopIcon className="size-3 text-purple-400" />
+                    ) : (
+                      <GlobeIcon className="size-3 text-blue-400" />
+                    )}
+                    {directEntity.kind === "ip" ? "Client IP Lookup" : "Domain Lookup"}
+                  </span>
+                  <span>{directEntity.kind === "ip" ? "Any IP address" : "Any domain"}</span>
+                </div>
+                {(() => {
+                  const idx = flatItems.findIndex((it) => it.type === "direct")
+                  const isActive = idx === safeSelectedIndex
+                  return (
+                    <div
+                      ref={isActive ? activeItemRef : null}
+                      onClick={() =>
+                        handleSelect({
+                          type: "direct",
+                          id: `direct-${directEntity.value}`,
+                          data: directEntity,
+                        })
+                      }
+                      onMouseEnter={() => setSelectedIndex(idx)}
+                      className={cn(
+                        "group flex items-center justify-between mx-1.5 my-1 px-2.5 py-2 rounded-md cursor-pointer transition-colors text-xs",
+                        isActive
+                          ? "bg-accent text-accent-foreground"
+                          : "hover:bg-muted/40 text-foreground"
+                      )}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Badge
+                          variant="outline"
+                          className="font-mono text-[9px] uppercase tracking-wider px-1.5 py-0 bg-primary/10 text-primary border-primary/20 shrink-0"
+                        >
+                          {directEntity.kind === "ip" ? "IP" : "DOMAIN"}
+                        </Badge>
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-mono font-medium text-foreground truncate text-xs">
+                            {directEntity.value}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground font-sans truncate">
+                            {hasCategorizedResults
+                              ? "Open full activity profile"
+                              : "No telemetry matches yet — investigate anyway"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {isActive && (
+                        <div className="hidden sm:flex items-center gap-1 text-[11px] font-mono text-muted-foreground shrink-0 ml-2">
+                          <span>Investigate</span>
+                          <CornerDownLeftIcon className="size-3" />
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
+
+            {/* Invalid input feedback */}
+            {showInvalid && (
+              <div className="flex items-center gap-2 px-3.5 py-2.5 text-xs text-destructive bg-destructive/5">
+                <AlertCircleIcon className="size-3.5 shrink-0" />
+                <span>
+                  {parsedQuery.kind === "invalid"
+                    ? parsedQuery.reason
+                    : "Enter a valid domain or IP address."}
+                </span>
+              </div>
+            )}
+
+            {/* Below the search floor: no query is fired yet */}
+            {!loading &&
+              !error &&
+              query.trim().length > 0 &&
+              query.trim().length < MIN_SEARCH_LENGTH && (
+                <div className="px-3.5 py-3 text-[11px] text-muted-foreground font-mono">
+                  Type at least {MIN_SEARCH_LENGTH} characters to search telemetry.
+                </div>
+              )}
+
             {/* Loading State */}
-            {loading && !hasResults && (
-              <div className="flex flex-col items-center justify-center p-10 text-center gap-2.5">
+            {loading && !hasCategorizedResults && (
+              <div className="flex flex-col items-center justify-center p-8 text-center gap-2.5">
                 <Loader2Icon className="size-5 animate-spin text-primary" />
                 <span className="text-xs text-muted-foreground font-mono">
                   Searching DNS intelligence...
@@ -370,24 +502,6 @@ export function GlobalIntelligenceSearch() {
               </div>
             )}
 
-            {/* No Results Empty State */}
-            {!loading && !error && hasSearched && !hasResults && (
-              <div className="flex flex-col items-center justify-center p-10 text-center">
-                <div className="flex size-10 items-center justify-center rounded-full bg-muted/60 text-muted-foreground mb-3">
-                  <SearchXIcon className="size-5" />
-                </div>
-                <div className="text-sm font-semibold text-foreground">
-                  No intelligence found
-                </div>
-                <p className="text-xs text-muted-foreground mt-1 max-w-sm">
-                  No domain, client, or query matched{" "}
-                  <span className="font-mono text-foreground font-medium">
-                    &ldquo;{query}&rdquo;
-                  </span>
-                </p>
-              </div>
-            )}
-
             {/* Idle Initial State */}
             {!loading && !error && query.trim().length === 0 && (
               <div className="p-5 flex flex-col gap-3.5 text-xs text-muted-foreground">
@@ -396,13 +510,17 @@ export function GlobalIntelligenceSearch() {
                   <span>Global DNSNetra SOC Intelligence</span>
                 </div>
                 <p className="text-xs leading-relaxed text-muted-foreground">
-                  Cross-sectional threat detection search across authoritative DNS profiles, monitored client IP endpoints, and event telemetry.
+                  Search any domain or IP address to open its full activity profile. Matching
+                  telemetry appears below as you type.
+                </p>
+                <p className="text-[11px] leading-relaxed text-muted-foreground/80">
+                  Domain and IP lookups query VirusTotal and AlienVault OTX for live reputation.
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
                   <div className="rounded-md border border-border/60 bg-muted/20 p-2.5 flex flex-col gap-1">
                     <span className="font-mono font-medium text-foreground text-[11px] flex items-center gap-1.5">
                       <GlobeIcon className="size-3 text-blue-400" />
-                      Domain
+                      Any domain
                     </span>
                     <span className="text-[11px] text-muted-foreground font-mono truncate">
                       google.com, iclousd.life
@@ -411,7 +529,7 @@ export function GlobalIntelligenceSearch() {
                   <div className="rounded-md border border-border/60 bg-muted/20 p-2.5 flex flex-col gap-1">
                     <span className="font-mono font-medium text-foreground text-[11px] flex items-center gap-1.5">
                       <LaptopIcon className="size-3 text-purple-400" />
-                      Client IP
+                      Any IP address
                     </span>
                     <span className="text-[11px] text-muted-foreground font-mono truncate">
                       192.168.1.111, 10.0.0.5
@@ -420,10 +538,10 @@ export function GlobalIntelligenceSearch() {
                   <div className="rounded-md border border-border/60 bg-muted/20 p-2.5 flex flex-col gap-1">
                     <span className="font-mono font-medium text-foreground text-[11px] flex items-center gap-1.5">
                       <TerminalIcon className="size-3 text-amber-400" />
-                      DNS Query
+                      Live matches
                     </span>
                     <span className="text-[11px] text-muted-foreground font-mono truncate">
-                      Telemetry log events
+                      Domains, clients, queries
                     </span>
                   </div>
                 </div>
@@ -431,7 +549,7 @@ export function GlobalIntelligenceSearch() {
             )}
 
             {/* Categorized Results */}
-            {hasResults && (
+            {hasCategorizedResults && (
               <div className="flex flex-col py-1.5">
                 {/* 1. DOMAINS GROUP (if not IP-like) */}
                 {!isIpQuery && results.domains.length > 0 && (
@@ -739,7 +857,7 @@ export function GlobalIntelligenceSearch() {
               </span>
               <span className="flex items-center gap-1">
                 <kbd className="font-mono text-[9px] px-1 py-0.5 rounded bg-background border border-border">↵</kbd>
-                <span className="hidden sm:inline">Select</span>
+                <span className="hidden sm:inline">Investigate</span>
               </span>
               <span className="flex items-center gap-1">
                 <kbd className="font-mono text-[9px] px-1 py-0.5 rounded bg-background border border-border">ESC</kbd>

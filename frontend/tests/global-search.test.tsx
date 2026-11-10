@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { render, screen, fireEvent, cleanup } from "@testing-library/react"
+import {
+  render,
+  screen,
+  fireEvent,
+  cleanup,
+  waitFor,
+  act,
+} from "@testing-library/react"
 import * as React from "react"
 import { GlobalIntelligenceSearch } from "@/components/global-intelligence-search"
 import { dnsnetraApi } from "@/lib/data-table/api-client"
@@ -26,6 +33,42 @@ describe("dnsnetraApi.searchIntelligence", () => {
   it("returns empty arrays when query is empty or whitespace", async () => {
     const result = await dnsnetraApi.searchIntelligence("   ")
     expect(result).toEqual({ domains: [], clients: [], queries: [] })
+  })
+
+  it("keeps healthy categories and reports the failed one", async () => {
+    vi.spyOn(dnsnetraApi, "getDomains").mockResolvedValue({
+      total: 1,
+      limit: 10,
+      offset: 0,
+      has_more: false,
+      items: [
+        {
+          domain: "partial.example",
+          total_queries: 1,
+          unique_clients: 1,
+          benign_queries: 1,
+          malicious_queries: 0,
+          review_needed_queries: 0,
+          unknown_queries: 0,
+          first_seen: "2026-09-01T00:00:00Z",
+          last_seen: "2026-10-01T00:00:00Z",
+        },
+      ],
+    })
+    vi.spyOn(dnsnetraApi, "getClients").mockRejectedValue(new Error("403"))
+    vi.spyOn(dnsnetraApi, "getQueries").mockResolvedValue({
+      total: 0,
+      limit: 10,
+      offset: 0,
+      has_more: false,
+      items: [],
+    })
+
+    const result = await dnsnetraApi.searchIntelligence("partial")
+
+    expect(result.domains[0].domain).toBe("partial.example")
+    expect(result.clients).toEqual([])
+    expect(result.unavailable).toEqual(["clients"])
   })
 
   it("prioritizes exact domain match over partial matches", async () => {
@@ -154,7 +197,7 @@ describe("GlobalIntelligenceSearch Component", () => {
   it("renders desktop and mobile trigger buttons with placeholder", () => {
     render(<GlobalIntelligenceSearch />)
     expect(
-      screen.getByText("Search domain, client, query...")
+      screen.getByText("Search any domain or IP...")
     ).toBeInTheDocument()
   })
 
@@ -166,7 +209,7 @@ describe("GlobalIntelligenceSearch Component", () => {
     fireEvent.click(trigger)
 
     expect(
-      await screen.findByPlaceholderText("Search domain, client, query...")
+      await screen.findByPlaceholderText("Search any domain or IP...")
     ).toBeInTheDocument()
   })
 
@@ -175,7 +218,7 @@ describe("GlobalIntelligenceSearch Component", () => {
     fireEvent.keyDown(window, { key: "k", metaKey: true })
 
     expect(
-      await screen.findByPlaceholderText("Search domain, client, query...")
+      await screen.findByPlaceholderText("Search any domain or IP...")
     ).toBeInTheDocument()
   })
 
@@ -228,7 +271,7 @@ describe("GlobalIntelligenceSearch Component", () => {
     fireEvent.click(trigger)
 
     const input = await screen.findByPlaceholderText(
-      "Search domain, client, query..."
+      "Search any domain or IP..."
     )
     fireEvent.change(input, { target: { value: "malicious" } })
 
@@ -265,7 +308,7 @@ describe("GlobalIntelligenceSearch Component", () => {
     fireEvent.click(trigger)
 
     const input = await screen.findByPlaceholderText(
-      "Search domain, client, query..."
+      "Search any domain or IP..."
     )
     fireEvent.change(input, { target: { value: "threat" } })
 
@@ -273,5 +316,227 @@ describe("GlobalIntelligenceSearch Component", () => {
     fireEvent.click(domainItem)
 
     expect(mockPush).toHaveBeenCalledWith("/domains/threat-sample.com")
+  })
+
+  it("investigates an arbitrary unobserved domain directly from the search bar", async () => {
+    vi.spyOn(dnsnetraApi, "searchIntelligence").mockResolvedValue({
+      domains: [],
+      clients: [],
+      queries: [],
+    })
+
+    render(<GlobalIntelligenceSearch />)
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Search DNSNetra Intelligence" })[0]
+    )
+
+    const input = await screen.findByPlaceholderText("Search any domain or IP...")
+    fireEvent.change(input, { target: { value: "unseen-domain.example" } })
+
+    expect(await screen.findByText("unseen-domain.example")).toBeInTheDocument()
+
+    fireEvent.keyDown(input, { key: "Enter" })
+    expect(mockPush).toHaveBeenCalledWith("/domains/unseen-domain.example")
+  })
+
+  it("normalizes pasted URLs before investigating", async () => {
+    vi.spyOn(dnsnetraApi, "searchIntelligence").mockResolvedValue({
+      domains: [],
+      clients: [],
+      queries: [],
+    })
+
+    render(<GlobalIntelligenceSearch />)
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Search DNSNetra Intelligence" })[0]
+    )
+
+    const input = await screen.findByPlaceholderText("Search any domain or IP...")
+    fireEvent.change(input, { target: { value: "https://Evil.Example/login?x=1" } })
+
+    expect(await screen.findByText("evil.example")).toBeInTheDocument()
+
+    fireEvent.keyDown(input, { key: "Enter" })
+    expect(mockPush).toHaveBeenCalledWith("/domains/evil.example")
+  })
+
+  it("opens client activity when an IP address is entered", async () => {
+    vi.spyOn(dnsnetraApi, "searchIntelligence").mockResolvedValue({
+      domains: [],
+      clients: [],
+      queries: [],
+    })
+
+    render(<GlobalIntelligenceSearch />)
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Search DNSNetra Intelligence" })[0]
+    )
+
+    const input = await screen.findByPlaceholderText("Search any domain or IP...")
+    fireEvent.change(input, { target: { value: "203.0.113.9" } })
+    fireEvent.keyDown(input, { key: "Enter" })
+
+    expect(mockPush).toHaveBeenCalledWith("/clients/203.0.113.9")
+  })
+
+  it("shows validation feedback for input that is not a domain or IP", async () => {
+    vi.spyOn(dnsnetraApi, "searchIntelligence").mockResolvedValue({
+      domains: [],
+      clients: [],
+      queries: [],
+    })
+
+    render(<GlobalIntelligenceSearch />)
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Search DNSNetra Intelligence" })[0]
+    )
+
+    const input = await screen.findByPlaceholderText("Search any domain or IP...")
+    fireEvent.change(input, { target: { value: "not a domain" } })
+
+    expect(
+      await screen.findByText("Spaces are not valid in a domain or IP.")
+    ).toBeInTheDocument()
+
+    fireEvent.keyDown(input, { key: "Enter" })
+    expect(mockPush).not.toHaveBeenCalled()
+  })
+
+  it("does not query until the minimum search length is met", async () => {
+    const spy = vi.spyOn(dnsnetraApi, "searchIntelligence").mockResolvedValue({
+      domains: [],
+      clients: [],
+      queries: [],
+    })
+
+    render(<GlobalIntelligenceSearch />)
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Search DNSNetra Intelligence" })[0]
+    )
+
+    const input = await screen.findByPlaceholderText("Search any domain or IP...")
+    fireEvent.change(input, { target: { value: "a" } })
+
+    expect(
+      screen.getByText("Type at least 2 characters to search telemetry.")
+    ).toBeInTheDocument()
+
+    await new Promise((resolve) => setTimeout(resolve, 350))
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  it("shows which categories failed but keeps the rest", async () => {
+    vi.spyOn(dnsnetraApi, "searchIntelligence").mockResolvedValue({
+      domains: [
+        {
+          domain: "partial.example",
+          total_queries: 1,
+          unique_clients: 1,
+          benign_queries: 1,
+          malicious_queries: 0,
+          review_needed_queries: 0,
+          unknown_queries: 0,
+          latest_verdict: "Benign",
+          first_seen: "2026-09-15T00:00:00Z",
+          last_seen: "2026-10-01T05:00:00Z",
+        },
+      ],
+      clients: [],
+      queries: [],
+      unavailable: ["clients", "queries"],
+    })
+
+    render(<GlobalIntelligenceSearch />)
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Search DNSNetra Intelligence" })[0]
+    )
+
+    const input = await screen.findByPlaceholderText("Search any domain or IP...")
+    fireEvent.change(input, { target: { value: "partial" } })
+
+    expect(await screen.findByText("partial.example")).toBeInTheDocument()
+    expect(
+      screen.getByText("Partial results — clients, queries unavailable.")
+    ).toBeInTheDocument()
+  })
+
+  it("ignores a stale response that arrives after a newer query", async () => {
+    let resolveSlow: (value: any) => void = () => {}
+    let resolveFast: (value: any) => void = () => {}
+    const slow = new Promise((resolve) => {
+      resolveSlow = resolve
+    })
+    const fast = new Promise((resolve) => {
+      resolveFast = resolve
+    })
+
+    const spy = vi
+      .spyOn(dnsnetraApi, "searchIntelligence")
+      .mockImplementationOnce(() => slow as any)
+      .mockImplementationOnce(() => fast as any)
+
+    render(<GlobalIntelligenceSearch />)
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Search DNSNetra Intelligence" })[0]
+    )
+
+    const input = await screen.findByPlaceholderText("Search any domain or IP...")
+    fireEvent.change(input, { target: { value: "slow" } })
+
+    // Wait past the debounce so the first (slow) request is actually in flight.
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1))
+
+    fireEvent.change(input, { target: { value: "fast" } })
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2))
+
+    // The newer request resolves first.
+    await act(async () => {
+      resolveFast({
+        domains: [
+          {
+            domain: "fast-result.com",
+            total_queries: 5,
+            unique_clients: 1,
+            benign_queries: 5,
+            malicious_queries: 0,
+            review_needed_queries: 0,
+            unknown_queries: 0,
+            latest_verdict: "Benign",
+            first_seen: "2026-09-15T00:00:00Z",
+            last_seen: "2026-10-01T05:00:00Z",
+          },
+        ],
+        clients: [],
+        queries: [],
+      })
+    })
+    expect(await screen.findByText("fast-result.com")).toBeInTheDocument()
+
+    // The older request resolves late; its results must be dropped.
+    await act(async () => {
+      resolveSlow({
+        domains: [
+          {
+            domain: "stale-result.com",
+            total_queries: 5,
+            unique_clients: 1,
+            benign_queries: 5,
+            malicious_queries: 0,
+            review_needed_queries: 0,
+            unknown_queries: 0,
+            latest_verdict: "Benign",
+            first_seen: "2026-09-15T00:00:00Z",
+            last_seen: "2026-10-01T05:00:00Z",
+          },
+        ],
+        clients: [],
+        queries: [],
+      })
+    })
+
+    await waitFor(() =>
+      expect(screen.queryByText("stale-result.com")).not.toBeInTheDocument()
+    )
+    expect(screen.getByText("fast-result.com")).toBeInTheDocument()
   })
 })

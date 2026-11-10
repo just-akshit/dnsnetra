@@ -20,6 +20,7 @@ from investigation.schemas import (
     EntityNotFoundError,
     InvalidEntityError,
 )
+from investigation.live.service import LiveIntelService
 from investigation.service import InvestigationService
 
 logger = logging.getLogger("api_investigation")
@@ -51,14 +52,15 @@ def investigate_domain(
     window: Optional[str] = Query(None),
     start_time: Optional[str] = Query(None),
     end_time: Optional[str] = Query(None),
+    refresh: bool = Query(False, description="Bypass the live-intelligence cache."),
     current_user: dict[str, Any] = Depends(require_permission("domains:investigate")),
 ) -> DomainDossier:
     """Canonical domain investigation endpoint."""
     _check_no_temporal_params(window, start_time, end_time)
 
-    service = InvestigationService()
+    service = InvestigationService(live_intel_service=LiveIntelService())
     try:
-        return service.get_domain_dossier(domain)
+        return service.get_domain_dossier(domain, refresh_live=refresh)
     except EntityNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except InvalidEntityError as exc:
@@ -77,10 +79,11 @@ def investigate_domain_alias(
     window: Optional[str] = Query(None),
     start_time: Optional[str] = Query(None),
     end_time: Optional[str] = Query(None),
+    refresh: bool = Query(False, description="Bypass the live-intelligence cache."),
     current_user: dict[str, Any] = Depends(require_permission("domains:investigate")),
 ) -> DomainDossier:
     """Singular routing alias delegating to canonical domain investigation."""
-    return investigate_domain(domain, window, start_time, end_time, current_user)
+    return investigate_domain(domain, window, start_time, end_time, refresh, current_user)
 
 
 # ---------------------------------------------------------------------------
@@ -98,14 +101,15 @@ def investigate_client(
     window: Optional[str] = Query(None),
     start_time: Optional[str] = Query(None),
     end_time: Optional[str] = Query(None),
+    refresh: bool = Query(False, description="Bypass the live-intelligence cache."),
     current_user: dict[str, Any] = Depends(require_permission("clients:investigate")),
 ) -> ClientDossier:
     """Canonical client investigation endpoint."""
     _check_no_temporal_params(window, start_time, end_time)
 
-    service = InvestigationService()
+    service = InvestigationService(live_intel_service=LiveIntelService())
     try:
-        return service.get_client_dossier(client_ip)
+        return service.get_client_dossier(client_ip, refresh_live=refresh)
     except EntityNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except InvalidEntityError as exc:
@@ -124,7 +128,8 @@ def investigate_client_alias(
     window: Optional[str] = Query(None),
     start_time: Optional[str] = Query(None),
     end_time: Optional[str] = Query(None),
+    refresh: bool = Query(False, description="Bypass the live-intelligence cache."),
     current_user: dict[str, Any] = Depends(require_permission("clients:investigate")),
 ) -> ClientDossier:
     """Singular routing alias delegating to canonical client investigation."""
-    return investigate_client(client_ip, window, start_time, end_time, current_user)
+    return investigate_client(client_ip, window, start_time, end_time, refresh, current_user)

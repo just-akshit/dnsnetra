@@ -74,7 +74,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-_BASE_URL: str = "https://www.virustotal.com/api/v3/domains/{domain}"
+_BASE_URL: str = "https://www.virustotal.com/api/v3/{kind}/{indicator}"
 
 # How long (in seconds) to permanently remove a key from rotation when a
 # 401/403 indicates the key itself is invalid (only applies when using
@@ -180,11 +180,18 @@ class VirusTotalProvider(BaseThreatProvider):
     # Lookup
     # ------------------------------------------------------------------
     def lookup(self, domain: str) -> ThreatProviderResult:
-        """Query VirusTotal for *domain*.
+        """Query VirusTotal for *domain*."""
+        return self._lookup(domain, kind="domains")
 
-        Returns
-        -------
-        ThreatProviderResult
+    def lookup_ip(self, ip: str) -> ThreatProviderResult:
+        """Query VirusTotal for an IPv4/IPv6 address."""
+        return self._lookup(ip, kind="ip_addresses")
+
+    def _lookup(self, domain: str, kind: str = "domains") -> ThreatProviderResult:
+        """Query VirusTotal for *domain* at the given indicator *kind*.
+
+        ``kind`` is ``domains`` or ``ip_addresses``; both endpoints share the
+        same response shape and parsing path.
         """
         logger.info("[VT] Lookup started — %s", domain)
 
@@ -196,7 +203,7 @@ class VirusTotalProvider(BaseThreatProvider):
                 error="VT_API_KEY not set.",
             )
 
-        url = _BASE_URL.format(domain=domain)
+        url = _BASE_URL.format(kind=kind, indicator=domain)
 
         # ------------------------------------------------------------------
         # Retry loop with round-robin key rotation

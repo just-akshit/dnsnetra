@@ -11,8 +11,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
+from api.rate_limiter import enforce_search_rate_limit
 from api.rbac import require_permission
 from api.schemas import (
     CanonicalVerdict,
@@ -49,6 +50,7 @@ def _check_no_temporal_params(window: Optional[str], start_time: Optional[str], 
     description="Paginated list of queried domains ranked by activity with optional canonical verdict filter and temporal window.",
 )
 def list_domains(
+    request: Request,
     limit: int = Query(50, ge=1, le=1000, description="Max items to return"),
     offset: int = Query(0, ge=0, description="Offset index"),
     page: Optional[int] = Query(None, ge=1, description="Legacy page number alias"),
@@ -66,6 +68,10 @@ def list_domains(
     """Canonical domain reporting with SQL-level verdict, search, and sorting."""
     eff_limit = page_size if (page_size is not None and page_size >= 1) else limit
     eff_offset = ((page - 1) * eff_limit) if (page is not None and page >= 1) else offset
+
+    stripped_search = search.strip() if search and search.strip() else None
+    if stripped_search:
+        enforce_search_rate_limit(request)
 
     verdict_param = verdict or label
     canon_verdict: Optional[str] = None
@@ -86,7 +92,7 @@ def list_domains(
         offset=eff_offset,
         verdict_filter=canon_verdict,
         time_range=tr,
-        search=search.strip() if search and search.strip() else None,
+        search=stripped_search,
         sort_by=sort or "total_queries",
         sort_order=order or "desc",
     )
@@ -118,8 +124,15 @@ def get_domain_detail(
 
     service = InvestigationService()
     try:
-        return service.get_domain_dossier(domain)
+        dossier = service.get_domain_dossier(domain)
     except EntityNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except InvalidEntityError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    if not dossier.observed_in_network:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Domain '{dossier.domain}' not found in domain profiles.",
+        )
+    return dossier

@@ -4,12 +4,12 @@
 - **Status:** Awaiting user review
 - **Scope:** DNSNetra web dashboard + FastAPI backend + PostgreSQL
 - **Supersedes:** nothing
-
+3.7 Build order
 ## 1. Summary
 
 Add a durable reporting layer on top of the existing telemetry reports:
 
-- **Reports** are immutable snapshots of an entity dossier or a filtered query set, created by an analyst, reviewable, and exportable as CSV or XLSX.
+- **Reports** are immutable snapshots of an entity dossier or a filtered query set, created by an analyst, 3.7 Build orderreviewable, and exportable as CSV or XLSX.
 - **Cases** are mutable work items (tickets) that track investigation from creation to closure, with assignment, comments, evidence links, and an append-only timeline.
 - **Exports** cover entity dossiers and query sets in CSV and Excel, with the same filters as the screen, formula-injection protection, and an audit row per export.
 - **Verdict authority stays where it is.** Marking a report reviewed or resolving a case never changes a label. Clean/malicious decisions still go through the existing daily-review override.
@@ -89,8 +89,8 @@ CREATE TABLE IF NOT EXISTS reports (
     conclusion      TEXT NULL,
     verdict         TEXT NULL
                     CHECK (verdict IN ('Benign', 'Malicious', 'Review Needed', 'Unknown')),
-    created_by      UUID NULL REFERENCES users(id) ON DELETE SET NULL,
-    reviewed_by     UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+    created_by      INTEGER NULL REFERENCES dashboard_users(id) ON DELETE SET NULL,
+    reviewed_by     INTEGER NULL REFERENCES dashboard_users(id) ON DELETE SET NULL,
     reviewed_at     TIMESTAMPTZ NULL,
     case_id         BIGINT NULL REFERENCES cases(id) ON DELETE SET NULL,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -127,9 +127,9 @@ CREATE TABLE IF NOT EXISTS cases (
                                           'benign', 'duplicate', 'no_action')),
     entity_type     TEXT NULL CHECK (entity_type IN ('domain', 'client', 'query')),
     entity_value    TEXT NULL,
-    created_by      UUID NULL REFERENCES users(id) ON DELETE SET NULL,
-    assigned_to     UUID NULL REFERENCES users(id) ON DELETE SET NULL,
-    resolved_by     UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+    created_by      INTEGER NULL REFERENCES dashboard_users(id) ON DELETE SET NULL,
+    assigned_to     INTEGER NULL REFERENCES dashboard_users(id) ON DELETE SET NULL,
+    resolved_by     INTEGER NULL REFERENCES dashboard_users(id) ON DELETE SET NULL,
     resolved_at     TIMESTAMPTZ NULL,
     closed_at       TIMESTAMPTZ NULL,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -149,7 +149,7 @@ Append-only timeline. Comments are `kind = 'comment'`; system events carry metad
 CREATE TABLE IF NOT EXISTS case_events (
     id          BIGSERIAL PRIMARY KEY,
     case_id     BIGINT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
-    actor_id    UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+    actor_id    INTEGER NULL REFERENCES dashboard_users(id) ON DELETE SET NULL,
     kind        TEXT NOT NULL
                 CHECK (kind IN ('created', 'comment', 'status_changed', 'assigned',
                                 'priority_changed', 'resolution_set', 'report_linked',
@@ -168,7 +168,7 @@ CREATE INDEX idx_case_events_case ON case_events (case_id, created_at);
 CREATE TABLE IF NOT EXISTS case_reports (
     case_id     BIGINT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
     report_id   BIGINT NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
-    linked_by   UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+    linked_by   INTEGER NULL REFERENCES dashboard_users(id) ON DELETE SET NULL,
     linked_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (case_id, report_id)
 );

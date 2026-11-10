@@ -1,0 +1,190 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-10T00:00:00.000Z",
+  "title": "Design System: DNSNetra",
+  "extensions": {
+    "colorMeta": {
+      "canvas": { "role": "neutral", "displayName": "Clean White", "canonical": "oklch(1 0 0)", "tonalRamp": ["oklch(0.15 0 0)", "oklch(0.25 0 0)", "oklch(0.35 0 0)", "oklch(0.45 0 0)", "oklch(0.556 0 0)", "oklch(0.7 0 0)", "oklch(0.85 0 0)", "oklch(0.95 0 0)"] },
+      "surface": { "role": "neutral", "displayName": "Panel White", "canonical": "oklch(1 0 0)", "tonalRamp": ["oklch(0.15 0 0)", "oklch(0.205 0 0)", "oklch(0.35 0 0)", "oklch(0.45 0 0)", "oklch(0.556 0 0)", "oklch(0.7 0 0)", "oklch(0.85 0 0)", "oklch(0.97 0 0)"] },
+      "chrome": { "role": "neutral", "displayName": "Rail Off-White", "canonical": "oklch(0.985 0 0)", "tonalRamp": ["oklch(0.15 0 0)", "oklch(0.205 0 0)", "oklch(0.35 0 0)", "oklch(0.45 0 0)", "oklch(0.556 0 0)", "oklch(0.7 0 0)", "oklch(0.88 0 0)", "oklch(0.985 0 0)"] },
+      "chrome-active": { "role": "neutral", "displayName": "Rail Hover", "canonical": "oklch(0.97 0 0)", "tonalRamp": ["oklch(0.15 0 0)", "oklch(0.269 0 0)", "oklch(0.35 0 0)", "oklch(0.45 0 0)", "oklch(0.556 0 0)", "oklch(0.7 0 0)", "oklch(0.85 0 0)", "oklch(0.97 0 0)"] },
+      "ink": { "role": "neutral", "displayName": "Terminal Ink", "canonical": "oklch(0.145 0 0)", "tonalRamp": ["oklch(0.145 0 0)", "oklch(0.25 0 0)", "oklch(0.35 0 0)", "oklch(0.45 0 0)", "oklch(0.556 0 0)", "oklch(0.7 0 0)", "oklch(0.85 0 0)", "oklch(0.95 0 0)"] },
+      "ink-muted": { "role": "neutral", "displayName": "Muted Graphite", "canonical": "oklch(0.556 0 0)", "tonalRamp": ["oklch(0.15 0 0)", "oklch(0.25 0 0)", "oklch(0.35 0 0)", "oklch(0.45 0 0)", "oklch(0.556 0 0)", "oklch(0.7 0 0)", "oklch(0.85 0 0)", "oklch(0.95 0 0)"] },
+      "line": { "role": "neutral", "displayName": "Hairline Gray", "canonical": "oklch(0.922 0 0)", "tonalRamp": ["oklch(0.15 0 0)", "oklch(0.25 0 0)", "oklch(0.35 0 0)", "oklch(0.45 0 0)", "oklch(0.556 0 0)", "oklch(0.75 0 0)", "oklch(0.922 0 0)", "oklch(0.97 0 0)"] },
+      "action": { "role": "primary", "displayName": "Control Graphite", "canonical": "oklch(0.205 0 0)", "tonalRamp": ["oklch(0.145 0 0)", "oklch(0.205 0 0)", "oklch(0.35 0 0)", "oklch(0.45 0 0)", "oklch(0.556 0 0)", "oklch(0.7 0 0)", "oklch(0.85 0 0)", "oklch(0.95 0 0)"] },
+      "action-ink": { "role": "primary", "displayName": "Action Ink", "canonical": "oklch(0.985 0 0)", "tonalRamp": ["oklch(0.15 0 0)", "oklch(0.25 0 0)", "oklch(0.35 0 0)", "oklch(0.5 0 0)", "oklch(0.65 0 0)", "oklch(0.8 0 0)", "oklch(0.92 0 0)", "oklch(0.985 0 0)"] },
+      "focus": { "role": "neutral", "displayName": "Focus Gray", "canonical": "oklch(0.708 0 0)", "tonalRamp": ["oklch(0.15 0 0)", "oklch(0.25 0 0)", "oklch(0.35 0 0)", "oklch(0.45 0 0)", "oklch(0.556 0 0)", "oklch(0.708 0 0)", "oklch(0.85 0 0)", "oklch(0.95 0 0)"] },
+      "danger": { "role": "tertiary", "displayName": "Signal Red", "canonical": "oklch(0.577 0.245 27.325)", "tonalRamp": ["oklch(0.3 0.12 27)", "oklch(0.4 0.16 27)", "oklch(0.5 0.21 27)", "oklch(0.577 0.245 27.325)", "oklch(0.65 0.21 25)", "oklch(0.75 0.15 25)", "oklch(0.85 0.08 25)", "oklch(0.94 0.03 25)"] },
+      "verdict-clean": { "role": "secondary", "displayName": "Verified Green", "canonical": "oklch(0.508 0.118 165.612)", "tonalRamp": ["oklch(0.378 0.077 168.94)", "oklch(0.432 0.095 166.913)", "oklch(0.508 0.118 165.612)", "oklch(0.596 0.145 163.225)", "oklch(0.696 0.17 162.48)", "oklch(0.765 0.177 163.223)", "oklch(0.845 0.143 164.978)", "oklch(0.95 0.052 163.051)"] },
+      "verdict-review": { "role": "secondary", "displayName": "Attention Amber", "canonical": "oklch(0.555 0.163 48.998)", "tonalRamp": ["oklch(0.414 0.112 45.904)", "oklch(0.473 0.137 46.201)", "oklch(0.555 0.163 48.998)", "oklch(0.666 0.179 58.318)", "oklch(0.769 0.188 70.08)", "oklch(0.828 0.189 84.429)", "oklch(0.879 0.169 91.605)", "oklch(0.962 0.059 95.617)"] },
+      "verdict-malicious": { "role": "secondary", "displayName": "Threat Rose", "canonical": "oklch(0.514 0.222 16.935)", "tonalRamp": ["oklch(0.41 0.159 10.272)", "oklch(0.455 0.188 13.697)", "oklch(0.514 0.222 16.935)", "oklch(0.586 0.253 17.585)", "oklch(0.645 0.246 16.439)", "oklch(0.712 0.194 13.428)", "oklch(0.81 0.117 11.638)", "oklch(0.941 0.03 12.58)"] },
+      "auth-canvas": { "role": "neutral", "displayName": "Warm Paper", "canonical": "oklch(0.955 0.005 100)", "tonalRamp": ["oklch(0.2 0.01 100)", "oklch(0.32 0.01 100)", "oklch(0.45 0.01 100)", "oklch(0.58 0.01 100)", "oklch(0.7 0.01 100)", "oklch(0.82 0.006 100)", "oklch(0.9 0.005 100)", "oklch(0.955 0.005 100)"] },
+      "auth-panel": { "role": "neutral", "displayName": "Auth Panel", "canonical": "oklch(0.99 0.002 250)", "tonalRamp": ["oklch(0.2 0.01 250)", "oklch(0.32 0.01 250)", "oklch(0.45 0.008 250)", "oklch(0.58 0.006 250)", "oklch(0.7 0.005 250)", "oklch(0.82 0.004 250)", "oklch(0.92 0.003 250)", "oklch(0.99 0.002 250)"] },
+      "auth-ink": { "role": "neutral", "displayName": "Auth Ink", "canonical": "oklch(0.2 0.02 255)", "tonalRamp": ["oklch(0.2 0.02 255)", "oklch(0.3 0.02 255)", "oklch(0.4 0.02 255)", "oklch(0.5 0.018 255)", "oklch(0.6 0.015 255)", "oklch(0.72 0.012 255)", "oklch(0.84 0.008 255)", "oklch(0.94 0.004 255)"] },
+      "auth-muted": { "role": "neutral", "displayName": "Auth Muted", "canonical": "oklch(0.46 0.02 255)", "tonalRamp": ["oklch(0.2 0.02 255)", "oklch(0.3 0.02 255)", "oklch(0.38 0.02 255)", "oklch(0.46 0.02 255)", "oklch(0.56 0.018 255)", "oklch(0.68 0.014 255)", "oklch(0.82 0.009 255)", "oklch(0.93 0.004 255)"] },
+      "auth-line": { "role": "neutral", "displayName": "Auth Line", "canonical": "oklch(0.87 0.008 255)", "tonalRamp": ["oklch(0.2 0.02 255)", "oklch(0.32 0.018 255)", "oklch(0.45 0.015 255)", "oklch(0.58 0.012 255)", "oklch(0.7 0.01 255)", "oklch(0.79 0.009 255)", "oklch(0.87 0.008 255)", "oklch(0.94 0.004 255)"] },
+      "auth-accent": { "role": "primary", "displayName": "Institutional Teal", "canonical": "oklch(0.45 0.1 215)", "tonalRamp": ["oklch(0.22 0.05 215)", "oklch(0.3 0.08 215)", "oklch(0.38 0.09 215)", "oklch(0.45 0.1 215)", "oklch(0.55 0.1 215)", "oklch(0.68 0.08 215)", "oklch(0.82 0.05 215)", "oklch(0.93 0.02 215)"] },
+      "auth-danger": { "role": "tertiary", "displayName": "Auth Danger", "canonical": "oklch(0.5 0.17 25)", "tonalRamp": ["oklch(0.28 0.1 25)", "oklch(0.36 0.13 25)", "oklch(0.44 0.16 25)", "oklch(0.5 0.17 25)", "oklch(0.6 0.15 25)", "oklch(0.72 0.11 25)", "oklch(0.84 0.06 25)", "oklch(0.94 0.02 25)"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Wordmark", "purpose": "DM Sans lockup on auth screens only." },
+      "headline": { "displayName": "Page & Entity Title", "purpose": "Header title and dossier entity name." },
+      "title": { "displayName": "Card Title", "purpose": "Panel and card headings." },
+      "body": { "displayName": "Interface Body", "purpose": "Default UI and table copy." },
+      "label": { "displayName": "Eyebrow / Column Label", "purpose": "Uppercase 11px section and column labels." },
+      "mono": { "displayName": "Machine Data", "purpose": "Domains, IPs, counts, timestamps, provider values." },
+      "micro": { "displayName": "Micro Mono", "purpose": "Smallest mono tier: badge metadata and inline status timestamps." },
+      "auth-body": { "displayName": "Auth Field Text", "purpose": "15px auth field, label, and button copy." }
+    },
+    "shadows": [
+      { "name": "inset-lift", "value": "0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)", "purpose": "Sidebar-inset main panel at md and up." },
+      { "name": "auth-card", "value": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "purpose": "The auth split card only." },
+      { "name": "overlay", "value": "0 25px 50px -12px rgb(0 0 0 / 0.25)", "purpose": "Dialogs above a bg-black/60 blurred backdrop." },
+      { "name": "floating-panel", "value": "0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)", "purpose": "Chart tooltips and elevated popovers." },
+      { "name": "active-ring", "value": "0 0 0 1px var(--sidebar-border)", "purpose": "Raised sidebar menu action; reads as a 1px outline." }
+    ],
+    "motion": [
+      { "name": "ease-standard", "value": "cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "Default state transitions." },
+      { "name": "ease-out-expo", "value": "cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "Auth error reveal; 200ms." },
+      { "name": "ease-drawer", "value": "cubic-bezier(0.32, 0.72, 0, 1)", "purpose": "Drawer and sheet gestures; up to 450ms." },
+      { "name": "duration-fast", "value": "150ms", "purpose": "Hover, focus, and control state changes." },
+      { "name": "duration-base", "value": "200ms", "purpose": "Auth error entrance." },
+      { "name": "duration-drawer", "value": "450ms", "purpose": "Drawer settle." },
+      { "name": "reduced-motion", "value": "0.01ms", "purpose": "Global override under prefers-reduced-motion." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" },
+      { "name": "2xl", "value": "1536px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Highest-contrast action; graphite fill that inverts in dark mode.",
+      "html": "<button class=\"ds-btn-primary\" type=\"button\">Investigate</button>",
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 10px;border:1px solid transparent;border-radius:10px;background:var(--primary,oklch(0.205 0 0));color:var(--primary-foreground,oklch(0.985 0 0));font-family:Geist,ui-sans-serif,system-ui,sans-serif;font-size:14px;font-weight:500;line-height:1;white-space:nowrap;cursor:pointer;outline:none;transition:background-color 150ms ease,box-shadow 150ms ease,transform 150ms ease}.ds-btn-primary:hover{background:color-mix(in oklch,var(--primary,oklch(0.205 0 0)) 80%,transparent)}.ds-btn-primary:focus-visible{border-color:var(--ring,oklch(0.708 0 0));box-shadow:0 0 0 3px oklch(0.708 0 0 / 50%)}.ds-btn-primary:active{transform:translateY(1px)}"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Default secondary action; canvas fill with a single hairline.",
+      "html": "<button class=\"ds-btn-outline\" type=\"button\">Export report</button>",
+      "css": ".ds-btn-outline{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 10px;border:1px solid var(--border,oklch(0.922 0 0));border-radius:10px;background:var(--background,oklch(1 0 0));color:var(--foreground,oklch(0.145 0 0));font-family:Geist,ui-sans-serif,system-ui,sans-serif;font-size:14px;font-weight:500;line-height:1;white-space:nowrap;cursor:pointer;outline:none;transition:background-color 150ms ease,border-color 150ms ease,box-shadow 150ms ease}.ds-btn-outline:hover{background:var(--muted,oklch(0.97 0 0))}.ds-btn-outline:focus-visible{border-color:var(--ring,oklch(0.708 0 0));box-shadow:0 0 0 3px oklch(0.708 0 0 / 50%)}.ds-btn-outline:active{transform:translateY(1px)}"
+    },
+    {
+      "name": "Destructive Button",
+      "kind": "button",
+      "refersTo": "button-destructive",
+      "description": "Tinted red fill, never a solid red slab; for destructive confirmation.",
+      "html": "<button class=\"ds-btn-destructive\" type=\"button\">Delete user</button>",
+      "css": ".ds-btn-destructive{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 10px;border:1px solid transparent;border-radius:10px;background:color-mix(in oklch,var(--destructive,oklch(0.577 0.245 27.325)) 10%,transparent);color:var(--destructive,oklch(0.577 0.245 27.325));font-family:Geist,ui-sans-serif,system-ui,sans-serif;font-size:14px;font-weight:500;line-height:1;white-space:nowrap;cursor:pointer;outline:none;transition:background-color 150ms ease,box-shadow 150ms ease}.ds-btn-destructive:hover{background:color-mix(in oklch,var(--destructive,oklch(0.577 0.245 27.325)) 20%,transparent)}.ds-btn-destructive:focus-visible{border-color:color-mix(in oklch,var(--destructive,oklch(0.577 0.245 27.325)) 40%,transparent);box-shadow:0 0 0 3px oklch(0.577 0.245 27.325 / 20%)}"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input-default",
+      "description": "32px hairline field; focus adds a 3px neutral ring.",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"Search any domain or IP...\" aria-label=\"Search\" />",
+      "css": ".ds-input{display:block;width:100%;min-width:0;height:32px;padding:0 10px;border:1px solid var(--input,oklch(0.922 0 0));border-radius:10px;background:transparent;color:var(--foreground,oklch(0.145 0 0));font-family:Geist,ui-sans-serif,system-ui,sans-serif;font-size:14px;line-height:1.5;outline:none;transition:border-color 150ms ease,box-shadow 150ms ease}.ds-input::placeholder{color:var(--muted-foreground,oklch(0.556 0 0))}.ds-input:hover{border-color:var(--ring,oklch(0.708 0 0))}.ds-input:focus-visible{border-color:var(--ring,oklch(0.708 0 0));box-shadow:0 0 0 3px oklch(0.708 0 0 / 50%)}"
+    },
+    {
+      "name": "Global Search Trigger",
+      "kind": "custom",
+      "description": "Signature header control that opens the intelligence command palette.",
+      "html": "<button class=\"ds-search-trigger\" type=\"button\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"8\"></circle><path d=\"m21 21-4.3-4.3\"></path></svg><span>Search intelligence</span><kbd class=\"ds-search-kbd\">/</kbd></button>",
+      "css": ".ds-search-trigger{display:inline-flex;align-items:center;justify-content:space-between;gap:8px;height:32px;width:288px;padding:0 10px;border:1px solid color-mix(in oklch,var(--border,oklch(0.922 0 0)) 70%,transparent);border-radius:8px;background:color-mix(in oklch,var(--muted,oklch(0.97 0 0)) 30%,transparent);color:var(--muted-foreground,oklch(0.556 0 0));font-family:Geist,ui-sans-serif,system-ui,sans-serif;font-size:12px;line-height:1;cursor:pointer;outline:none;transition:background-color 150ms ease,border-color 150ms ease,box-shadow 150ms ease}.ds-search-trigger:hover{background:color-mix(in oklch,var(--muted,oklch(0.97 0 0)) 60%,transparent);border-color:var(--border,oklch(0.922 0 0));color:var(--foreground,oklch(0.145 0 0))}.ds-search-trigger:focus-visible{box-shadow:0 0 0 1px var(--ring,oklch(0.708 0 0))}.ds-search-kbd{display:inline-flex;align-items:center;height:18px;padding:0 5px;border:1px solid var(--border,oklch(0.922 0 0));border-radius:4px;background:var(--background,oklch(1 0 0));font-family:'Geist Mono',ui-monospace,monospace;font-size:10px;color:var(--muted-foreground,oklch(0.556 0 0))}"
+    },
+    {
+      "name": "Verdict Badge — Malicious",
+      "kind": "chip",
+      "refersTo": "badge-verdict",
+      "description": "Rose pill for malicious, blocked, threat, or blacklisted.",
+      "html": "<span class=\"ds-badge-malicious\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 13c0 5-3.5 7.5-7.7 8.9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1 1 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z\"></path><path d=\"M12 8v4\"></path><path d=\"M12 16h.01\"></path></svg>Malicious</span>",
+      "css": ".ds-badge-malicious{display:inline-flex;align-items:center;justify-content:center;gap:4px;height:20px;padding:0 8px;border:1px solid oklch(0.586 0.253 17.585 / 30%);border-radius:26px;background:oklch(0.645 0.246 16.439 / 10%);color:oklch(0.514 0.222 16.935);font-family:Geist,ui-sans-serif,system-ui,sans-serif;font-size:12px;font-weight:500;line-height:1;white-space:nowrap}.ds-badge-malicious svg{flex:none}"
+    },
+    {
+      "name": "Verdict Badge — Clean",
+      "kind": "chip",
+      "description": "Emerald pill for clean, benign, active, or done.",
+      "html": "<span class=\"ds-badge-clean\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"m9 12 2 2 4-4\"></path></svg>Clean</span>",
+      "css": ".ds-badge-clean{display:inline-flex;align-items:center;justify-content:center;gap:4px;height:20px;padding:0 8px;border:1px solid oklch(0.596 0.145 163.225 / 25%);border-radius:26px;background:oklch(0.696 0.17 162.48 / 10%);color:oklch(0.508 0.118 165.612);font-family:Geist,ui-sans-serif,system-ui,sans-serif;font-size:12px;font-weight:500;line-height:1;white-space:nowrap}.ds-badge-clean svg{flex:none}"
+    },
+    {
+      "name": "Verdict Badge — Review Needed",
+      "kind": "chip",
+      "description": "Amber pill for suspicious, review needed, in process, or flagged.",
+      "html": "<span class=\"ds-badge-review\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z\"></path><path d=\"M12 9v4\"></path><path d=\"M12 17h.01\"></path></svg>Review Needed</span>",
+      "css": ".ds-badge-review{display:inline-flex;align-items:center;justify-content:center;gap:4px;height:20px;padding:0 8px;border:1px solid oklch(0.666 0.179 58.318 / 30%);border-radius:26px;background:oklch(0.769 0.188 70.08 / 10%);color:oklch(0.555 0.163 48.998);font-family:Geist,ui-sans-serif,system-ui,sans-serif;font-size:12px;font-weight:500;line-height:1;white-space:nowrap}.ds-badge-review svg{flex:none}"
+    },
+    {
+      "name": "Panel Card",
+      "kind": "card",
+      "refersTo": "card-default",
+      "description": "Flat evidence panel separated by a 1px foreground ring, never a shadow.",
+      "html": "<section class=\"ds-card\"><div class=\"ds-card-head\"><h3 class=\"ds-card-title\">Live intelligence</h3><span class=\"ds-card-meta\">VirusTotal · OTX</span></div><p class=\"ds-card-body\">Checked 2026-11-10 14:02 UTC. No provider reports a detection.</p></section>",
+      "css": ".ds-card{display:flex;flex-direction:column;gap:16px;padding:16px;border-radius:14px;background:var(--card,oklch(1 0 0));color:var(--card-foreground,oklch(0.145 0 0));box-shadow:0 0 0 1px oklch(0.145 0 0 / 10%);font-family:Geist,ui-sans-serif,system-ui,sans-serif}.ds-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.ds-card-title{margin:0;font-size:16px;font-weight:500;line-height:1.375}.ds-card-meta{font-family:'Geist Mono',ui-monospace,monospace;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted-foreground,oklch(0.556 0 0))}.ds-card-body{margin:0;font-size:14px;line-height:1.5;color:var(--muted-foreground,oklch(0.556 0 0))}"
+    },
+    {
+      "name": "Sidebar Nav Item",
+      "kind": "nav",
+      "refersTo": "nav-item-active",
+      "description": "Active sidebar row: tonal pill, 8px radius, medium weight, 16px icon.",
+      "html": "<a class=\"ds-nav-item ds-nav-active\" href=\"#\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20\"></path><path d=\"M2 12h20\"></path></svg><span>Domains</span></a>",
+      "css": ".ds-nav-item{display:flex;align-items:center;gap:8px;width:100%;height:32px;padding:0 8px;border-radius:8px;background:transparent;color:var(--sidebar-foreground,oklch(0.145 0 0));font-family:Geist,ui-sans-serif,system-ui,sans-serif;font-size:14px;line-height:1;text-decoration:none;transition:background-color 150ms ease,color 150ms ease}.ds-nav-item svg{flex:none}.ds-nav-item:hover{background:var(--sidebar-accent,oklch(0.97 0 0));color:var(--sidebar-accent-foreground,oklch(0.205 0 0))}.ds-nav-item:focus-visible{outline:2px solid var(--sidebar-ring,oklch(0.708 0 0));outline-offset:1px}.ds-nav-active{background:var(--sidebar-accent,oklch(0.97 0 0));color:var(--sidebar-accent-foreground,oklch(0.205 0 0));font-weight:500}"
+    },
+    {
+      "name": "Auth Submit",
+      "kind": "button",
+      "refersTo": "auth-submit",
+      "description": "Login submit: graphite fill that turns institutional teal on hover.",
+      "html": "<button class=\"ds-auth-submit\" type=\"button\">Sign in</button>",
+      "css": ".ds-auth-submit{display:flex;align-items:center;justify-content:center;width:100%;height:44px;border:0;border-radius:14px;background:oklch(0.2 0.02 255);color:#fff;font-family:Geist,ui-sans-serif,system-ui,sans-serif;font-size:15px;font-weight:500;line-height:1;cursor:pointer;box-shadow:0 1px 2px 0 rgb(0 0 0 / 0.05);transition:background-color 150ms ease}.ds-auth-submit:hover{background:oklch(0.45 0.1 215)}.ds-auth-submit:focus-visible{outline:2px solid oklch(0.45 0.1 215);outline-offset:2px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Instrument Panel",
+    "overview": "DNSNetra reads as a calibrated instrument, not a marketing surface. The chrome is achromatic graphite and paper white; the interface earns trust by being quiet, dense, and exact. Every pixel that isn't text is either a hairline, a tonal step, or a semantic verdict color. When something turns rose or amber, it is because the network did something an analyst must act on.\n\nThe system is built for long triage sessions on a self-hosted dashboard: compact 28–32px controls, 14px body copy, 11px uppercase labels, and Geist Mono for anything a machine produced — domains, IPs, counts, timestamps, ports, hashes. Density is the feature. A card is a panel, a table row is a reading, and the sidebar is a rail. Nothing floats for decoration; shadows appear only when a surface genuinely overlays another (dialog, drawer, popover, tooltip).\n\nThe one deliberate departure is the authentication surface. Login, signup, and password flows use a separate light-only palette — warm paper, an off-white panel, a deep institutional teal accent, and DM Sans for the wordmark. It is the front door of the building, not the operations floor. Do not import the auth teal into the dashboard chrome, and do not bring dashboard verdict colors into auth.",
+    "keyCharacteristics": [
+      "Achromatic dashboard chrome; color is reserved for state and verdict.",
+      "Flat surfaces separated by 1px hairlines and tonal steps, not soft drop shadows.",
+      "Operational density: h-7/h-8 controls, 0.625rem base radius, 4/8/12/16 spacing rhythm.",
+      "Machine data in Geist Mono; prose and UI labels in the sans stack.",
+      "Full light/dark parity in the dashboard; auth is always light.",
+      "A single teal accent exists only on the auth surface."
+    ],
+    "rules": [
+      { "name": "The Signal-Only Color Rule", "body": "In the dashboard, a non-neutral hue means a verdict or an error. If a color is not communicating malicious/suspicious/clean/danger, it is decoration and does not belong.", "section": "colors" },
+      { "name": "The One Teal Rule", "body": "oklch(0.45 0.1 215) exists only inside .auth-theme. It is never a dashboard accent, link color, or nav highlight.", "section": "colors" },
+      { "name": "The Mono-for-Machine Rule", "body": "If a value came from the network or a provider, set it in Geist Mono. If a human wrote it as prose, use the sans stack. Mixed runs keep the machine half in mono.", "section": "typography" },
+      { "name": "The Eyebrow Rule", "body": "Uppercase 11px labels are navigation aids, not emphasis. One per panel section, muted color, wide tracking. Do not uppercase body sentences.", "section": "typography" },
+      { "name": "The Inset Rule", "body": "The app is a sheet on a rail, not a border-to-border canvas. Keep the sidebar chrome, the 0.5rem inset, and the rounded main panel together; don't flatten the shell into a plain top-nav layout.", "section": "layout" },
+      { "name": "The Two-Padding Rule", "body": "Page gutters are 16px on mobile and 24px from lg up. Card padding stays 16px (12px for size=\"sm\"). Don't invent intermediate steps.", "section": "layout" },
+      { "name": "The Flat Panel Rule", "body": "If two surfaces are side by side, separate them with a hairline or a tonal step. A shadow means one surface is above another.", "section": "elevation" },
+      { "name": "The Hairline Rule", "body": "One pixel is the only stroke weight in the system. If a boundary needs more emphasis than that, change the surface tone, not the border width.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep the dashboard achromatic and let rose/amber/emerald appear only on verdicts, errors, and review states.",
+      "Do separate adjacent surfaces with a 1px hairline or a tonal step before reaching for a shadow.",
+      "Do use 28–32px controls and the 4/8/12/16 spacing rhythm; density is the product's advantage.",
+      "Do set domains, IPs, counts, timestamps, and provider values in Geist Mono.",
+      "Do preserve light/dark parity in the dashboard and verify both before shipping.",
+      "Do surface partial failure and unavailability explicitly with the amber notice pattern.",
+      "Do keep the auth surface on its own palette and radius; it is allowed to feel like a different room in the same building."
+    ],
+    "donts": [
+      "Don't introduce a brand accent into dashboard chrome, links, active nav, or focus states.",
+      "Don't use verdict hues for decoration, category coding, or chart series unrelated to a verdict.",
+      "Don't add ambient drop shadows to cards, tables, or page sections.",
+      "Don't exceed a 1px border, or stack a border and a ring on the same edge.",
+      "Don't round cards to pills or square them off; the 10px base / 14px card / 26px pill scale is fixed.",
+      "Don't bring the auth teal, DM Sans wordmark type, or warm paper background into the operations shell.",
+      "Don't render a failed provider or empty category as \"clean\" or as a normal zero-result state."
+    ]
+  }
+}

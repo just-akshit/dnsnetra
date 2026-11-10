@@ -23,7 +23,7 @@ from fastapi.responses import StreamingResponse
 
 from api.audit import AuditAction, log_audit_event
 from api.rate_limiter import enforce_search_rate_limit
-from api.rbac import require_permission
+from api.rbac import has_permission, require_permission
 from api.schemas import (
     CanonicalVerdict,
     ClientSummaryItem,
@@ -505,6 +505,13 @@ def get_report_entity(
         except ValueError:
             eff_type = "domain"
 
+    required = "domains:investigate" if eff_type == "domain" else "clients:investigate"
+    if not has_permission(current_user.get("role", ""), required):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: role '{current_user.get('role')}' lacks permission '{required}'",
+        )
+
     if eff_type == "client":
         try:
             dossier = inv_service.get_client_dossier(clean_entity)
@@ -512,11 +519,6 @@ def get_report_entity(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
         except InvalidEntityError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-        if not dossier.observed_in_network:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Client IP '{dossier.client_ip}' not found in client profiles.",
-            )
         return EntityReportResponse(
             entity=clean_entity,
             entity_type="client",
@@ -530,11 +532,6 @@ def get_report_entity(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
         except InvalidEntityError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-        if not dossier.observed_in_network:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Domain '{dossier.domain}' not found in domain profiles.",
-            )
         return EntityReportResponse(
             entity=clean_entity,
             entity_type="domain",

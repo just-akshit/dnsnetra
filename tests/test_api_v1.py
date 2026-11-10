@@ -372,7 +372,7 @@ def test_reports_flagged_compatibility(auth_headers):
 
 
 def test_reports_entity_endpoint(auth_headers):
-    """GET /api/v1/reports/entity returns 200 for valid domain or client, 404 for nonexistent."""
+    """GET /api/v1/reports/entity returns 200 for valid domain or client, including unseen entities."""
     # 1. Look up an existing domain
     res_d = client.get("/api/v1/reports/entity?entity=google.com", headers=auth_headers)
     assert res_d.status_code == 200
@@ -396,9 +396,12 @@ def test_reports_entity_endpoint(auth_headers):
     # 3. Missing entity parameter returns 422
     assert client.get("/api/v1/reports/entity", headers=auth_headers).status_code == 422
 
-    # 4. Non-existent domain returns 404
+    # 4. Valid but unseen domain returns a live-only dossier instead of 404
     res_missing = client.get("/api/v1/reports/entity?entity=nonexistent-entity-987654321.com", headers=auth_headers)
-    assert res_missing.status_code == 404
+    assert res_missing.status_code == 200
+    missing = res_missing.json()
+    assert missing["entity_type"] == "domain"
+    assert missing["domain_dossier"]["observed_in_network"] is False
 
 
 def test_reports_export_csv_endpoint(auth_headers):

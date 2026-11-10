@@ -79,15 +79,37 @@ describe("cases UI", () => {
     expect(screen.queryByRole("button", { name: "Close" })).not.toBeInTheDocument()
   })
 
-  it("hides close and reopen from analysts", async () => {
+  it("hides the comment form from support", async () => {
+    mockUser.current = { id: 2, username: "support", role: "SUPPORT" }
+    vi.spyOn(dnsnetraApi, "getCase").mockResolvedValue(caseDetail())
+
+    render(<CaseDetailPage />)
+    expect(await screen.findByText("Investigate beacon.example")).toBeInTheDocument()
+    expect(screen.queryByLabelText("Comment")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Comment" })).not.toBeInTheDocument()
+  })
+
+  it("does not let an analyst act on a teammate's case", async () => {
+    vi.spyOn(dnsnetraApi, "getCase").mockResolvedValue(
+      caseDetail({ assigned_to: 99 })
+    )
+
+    render(<CaseDetailPage />)
+    expect(await screen.findByText("Investigate beacon.example")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Start triage" })).not.toBeInTheDocument()
+    // Analysts still have cases:write, so comments remain available.
+    expect(screen.getByLabelText("Comment")).toBeInTheDocument()
+  })
+
+  it("lets analysts reopen but not close a resolved case", async () => {
     vi.spyOn(dnsnetraApi, "getCase").mockResolvedValue(
       caseDetail({ status: "resolved", resolution: "true_positive" })
     )
 
     render(<CaseDetailPage />)
     expect(await screen.findByText("Investigate beacon.example")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Reopen" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Close" })).not.toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Reopen" })).not.toBeInTheDocument()
   })
 
   it("sends the selected resolution when resolving", async () => {

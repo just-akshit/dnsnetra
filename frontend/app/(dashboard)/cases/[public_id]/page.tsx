@@ -16,7 +16,7 @@ import type { CaseDetail, CaseEvent } from "@/lib/reporting/types"
 interface Transition {
   label: string
   status: string
-  /** Mirrors the backend's cases:manage requirement. */
+  /** Backend gates this on cases:manage (closing, or reopening a closed case). */
   manageOnly?: boolean
 }
 
@@ -26,7 +26,7 @@ const NEXT: Record<string, Transition[]> = {
   investigating: [{ label: "Resolve", status: "resolved" }],
   awaiting_info: [{ label: "Resume", status: "investigating" }],
   resolved: [
-    { label: "Reopen", status: "investigating", manageOnly: true },
+    { label: "Reopen", status: "investigating" },
     { label: "Close", status: "closed", manageOnly: true },
   ],
   closed: [{ label: "Reopen", status: "investigating", manageOnly: true }],
@@ -40,11 +40,18 @@ const RESOLUTIONS = [
   { value: "no_action", label: "No action" },
 ]
 
-function actionsFor(status: string, role: string | undefined): Transition[] {
+function actionsFor(
+  status: string,
+  role: string | undefined,
+  userId: number | string | undefined,
+  assignedTo: number | null | undefined
+): Transition[] {
   const actions = NEXT[status] ?? []
   if (role === "ADMIN" || role === "SUPER_ADMIN") return actions
-  if (role === "ANALYST") return actions.filter((action) => !action.manageOnly)
-  return []
+  if (role !== "ANALYST" || userId == null) return []
+  // The PATCH route only lets an analyst update a case they own.
+  if (assignedTo != null && String(assignedTo) !== String(userId)) return []
+  return actions.filter((action) => !action.manageOnly)
 }
 
 function errorMessage(err: unknown, fallback: string): string {
@@ -138,8 +145,10 @@ export default function CaseDetailPage() {
     )
   }
 
-  const actions = actionsFor(item.status, me?.role)
+  const actions = actionsFor(item.status, me?.role, me?.id, item.assigned_to)
   const canResolve = actions.some((action) => action.status === "resolved")
+  const canComment =
+    me?.role === "ADMIN" || me?.role === "SUPER_ADMIN" || me?.role === "ANALYST"
 
   return (
     <div className="flex flex-col gap-4 p-4 lg:p-6">
@@ -196,13 +205,15 @@ export default function CaseDetailPage() {
               ))}
             </ol>
           )}
-          <div className="flex gap-2">
-            <Input value={comment} onChange={(e) => setComment(e.target.value)}
-                   placeholder="Add a comment" aria-label="Comment" disabled={pending !== null} />
-            <Button size="sm" onClick={() => void addComment()} disabled={pending !== null}>
-              {pending === "comment" ? "Working…" : "Comment"}
-            </Button>
-          </div>
+          {canComment && (
+            <div className="flex gap-2">
+              <Input value={comment} onChange={(e) => setComment(e.target.value)}
+                     placeholder="Add a comment" aria-label="Comment" disabled={pending !== null} />
+              <Button size="sm" onClick={() => void addComment()} disabled={pending !== null}>
+                {pending === "comment" ? "Working…" : "Comment"}
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 

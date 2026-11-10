@@ -48,7 +48,12 @@ ROLE_PERMISSIONS: dict[str, Set[str]] = {
         "daily_review:update",
         # Reports
         "reports:read",
+        "reports:write",
         "reports:export",
+        # Cases
+        "cases:read",
+        "cases:write",
+        "cases:manage",
         # System & Audit
         "settings:read",
         "settings:update",
@@ -70,7 +75,11 @@ ROLE_PERMISSIONS: dict[str, Set[str]] = {
         "daily_review:update",
         # Reports
         "reports:read",
+        "reports:write",
         "reports:export",
+        # Cases
+        "cases:read",
+        "cases:write",
     },
     UserRole.SUPPORT.value: {
         "dashboard:read",
@@ -81,6 +90,7 @@ ROLE_PERMISSIONS: dict[str, Set[str]] = {
         "clients:read",
         "queries:read",
         "reports:read",
+        "cases:read",
     },
 }
 

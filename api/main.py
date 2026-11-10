@@ -38,6 +38,7 @@ from api.routes.dashboard import router as dashboard_router
 from api.routes.domains import router as domains_router
 from api.routes.investigation import router as investigation_router
 from api.routes.reports import router as reports_router
+from api.routes.reports_saved import router as reports_saved_router
 from api.routes.status import router as status_router
 from api.routes.users import router as users_router
 from investigation.schemas import (
@@ -160,6 +161,7 @@ async def invariant_violation_handler(request: Request, exc: InvariantViolationE
 app.include_router(auth_router)
 app.include_router(dashboard_router)
 app.include_router(reports_router)
+app.include_router(reports_saved_router)
 app.include_router(domains_router)
 app.include_router(clients_router)
 app.include_router(investigation_router)

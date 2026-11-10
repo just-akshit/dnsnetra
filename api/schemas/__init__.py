@@ -26,6 +26,13 @@ from .reports import (
     TimeseriesBucketResponse,
     TimeseriesResponse,
 )
+from .reports_saved import (
+    ReportCreateRequest,
+    ReportListResponse,
+    ReportReviewRequest,
+    SavedReportDetail,
+    SavedReportSummary,
+)
 from .status import (
     AggregationStatus,
     DatabaseHealth,
@@ -62,4 +69,9 @@ __all__ = [
     "AnalyticsMetrics",
     "AnalyticsTimelineBucket",
     "DomainAnalyticsResponse",
+    "ReportCreateRequest",
+    "ReportReviewRequest",
+    "ReportListResponse",
+    "SavedReportDetail",
+    "SavedReportSummary",
 ]

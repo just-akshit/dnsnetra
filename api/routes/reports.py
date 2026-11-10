@@ -566,13 +566,7 @@ def get_report_export_csv(
 
     filter_ip = client_ip
     filter_dom = domain
-    if search and search.strip():
-        term = search.strip()
-        try:
-            ipaddress.ip_address(term)
-            filter_ip = filter_ip or term
-        except ValueError:
-            filter_dom = filter_dom or term
+    stripped_search = search.strip() if search and search.strip() else None
 
     verdict_param = verdict or label
     canon_verdict: Optional[str] = None
@@ -590,6 +584,7 @@ def get_report_export_csv(
             query_type=query_type,
             time_range=tr,
             limit=limit,
+            search=stripped_search,
         )
     except ReportingValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

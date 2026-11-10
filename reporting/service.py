@@ -494,6 +494,7 @@ class ReportingService:
         start_time: Optional[Union[datetime, str]] = None,
         end_time: Optional[Union[datetime, str]] = None,
         window: Optional[str] = None,
+        search: Optional[str] = None,
         limit: int = 5000,
     ):
         """
@@ -547,5 +548,6 @@ class ReportingService:
             start_time=q_start,
             end_time=q_end,
             limit=limit,
+            search=search,
         )
 

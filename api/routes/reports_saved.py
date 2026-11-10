@@ -4,18 +4,30 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from api.audit import AuditAction, log_audit_event
 from api.rbac import require_permission
 from api.schemas.reports_saved import (
     ReportCreateRequest, ReportListResponse, ReportReviewRequest,
-    SavedReportDetail, SavedReportSummary,
+    SavedReportDetail,
 )
+from investigation.schemas import InvalidEntityError
 from reporting.report_schemas import ReportStatus
 from reporting.report_service import ReportService
+from reporting.schemas import ReportingValidationError
+from time_engine import InvalidTimeRangeError, TimeEngineValidationError
 
 router = APIRouter(prefix="/api/v1/reports/saved", tags=["Saved Reports"])
+
+# Expected client-side validation failures; anything else is a server error.
+_CREATE_VALIDATION_ERRORS = (
+    InvalidEntityError,
+    ReportingValidationError,
+    InvalidTimeRangeError,
+    TimeEngineValidationError,
+    ValueError,
+)
 
 
 def _audit(action, request, user, public_id, **metadata):
@@ -49,7 +61,7 @@ def create_report(
             user_id=current_user["id"],
             refresh=payload.refresh,
         )
-    except Exception as exc:
+    except _CREATE_VALIDATION_ERRORS as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     _audit(AuditAction.REPORT_CREATED, request, current_user, report.public_id,

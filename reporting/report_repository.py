@@ -147,7 +147,7 @@ class ReportRepository:
             with conn.cursor() as cur:
                 cur.execute(
                     "UPDATE reports SET status = 'archived', updated_at = NOW() "
-                    "WHERE public_id = %s AND status <> 'archived';",
+                    "WHERE public_id = %s;",
                     (public_id,),
                 )
                 changed = cur.rowcount > 0

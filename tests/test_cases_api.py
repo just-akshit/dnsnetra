@@ -329,3 +329,34 @@ def test_resolve_and_close_append_events_and_audit(
     assert closed.status_code == 200
     rows, _ = get_audit_logs(action="CASE_CLOSED", limit=1)
     assert rows[0]["target_id"] == public_id
+
+
+def test_resolution_only_change_is_audited_as_update_not_resolved(
+    admin_headers, cases
+):
+    created = _create(admin_headers, cases)
+    public_id = created.json()["public_id"]
+    client.patch(f"/api/v1/cases/{public_id}", headers=admin_headers,
+                 json={"status": "triaged"})
+    client.patch(f"/api/v1/cases/{public_id}", headers=admin_headers,
+                 json={"status": "investigating"})
+
+    res = client.patch(
+        f"/api/v1/cases/{public_id}", headers=admin_headers,
+        json={"resolution": "false_positive"},
+    )
+    assert res.status_code == 200
+    assert res.json()["status"] == "investigating"
+
+    resolved = db(
+        "SELECT COUNT(*) FROM audit_logs "
+        "WHERE target_id = %s AND action = 'CASE_RESOLVED'",
+        (public_id,),
+    )
+    assert resolved[0][0] == 0
+    updated = db(
+        "SELECT COUNT(*) FROM audit_logs "
+        "WHERE target_id = %s AND action = 'CASE_UPDATED'",
+        (public_id,),
+    )
+    assert updated[0][0] >= 1

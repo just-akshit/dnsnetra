@@ -26,6 +26,22 @@ logger = logging.getLogger(__name__)
 
 RECENT_QUERY_CAP = 500
 
+# Query-set filters the create guard recognises; unknown keys cannot satisfy it.
+QUERY_SET_FILTER_KEYS = frozenset(
+    {"client_ip", "domain", "verdict", "query_type", "search"}
+)
+
+
+def _has_query_filters(filters: dict[str, Any]) -> bool:
+    """True when at least one recognised filter carries a non-blank value."""
+    for key in QUERY_SET_FILTER_KEYS:
+        value = filters.get(key)
+        if isinstance(value, str):
+            value = value.strip()
+        if value not in (None, ""):
+            return True
+    return False
+
 
 class ReportService:
     def __init__(self, repository=None, investigation_service=None,
@@ -74,8 +90,10 @@ class ReportService:
             # The dossier caps recent queries at 25 (max 50). A report must
             # capture up to 500 for the entity and window, so query the event
             # log directly rather than reusing the dossier preview.
+            # Exact equality: a substring match would pull in subdomains and
+            # lookalikes (sub.example.com, notexample.com) into the snapshot.
             entity_filter = (
-                {"domain": entity} if entity_type == "domain"
+                {"domain_exact": entity} if entity_type == "domain"
                 else {"client_ip": entity}
             )
             events = self.reporting.get_queries(
@@ -163,10 +181,8 @@ class ReportService:
         if kind in ("entity_domain", "entity_client"):
             entity = self._canonical_entity(kind, entity)
         elif kind == "query_set":
-            has_filters = any(
-                value not in (None, "") for value in filters.values()
-            )
-            if not window and not start_time and not end_time and not has_filters:
+            if (not window and not start_time and not end_time
+                    and not _has_query_filters(filters)):
                 raise ValueError(
                     "A query-set report requires a window or at least one filter."
                 )
@@ -222,6 +238,8 @@ class ReportService:
         updates = dict(updates or {})
         if not updates:
             return self.repository.get(public_id)
+        if "status" in updates and updates["status"] is None:
+            raise ValueError("A report status cannot be null.")
 
         status = updates.get("status")
         if status == ReportStatus.REVIEWED.value:

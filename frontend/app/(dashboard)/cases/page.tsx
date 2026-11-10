@@ -4,6 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { toast } from "sonner"
 
+import { useAuthUser } from "@/components/auth/AuthGuard"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -35,6 +36,10 @@ function errorMessage(err: unknown): string {
 }
 
 export default function CasesPage() {
+  const me = useAuthUser()
+  // The create route requires cases:write, which SUPPORT lacks.
+  const canWrite =
+    me?.role === "ADMIN" || me?.role === "SUPER_ADMIN" || me?.role === "ANALYST"
   const [items, setItems] = React.useState<CaseSummary[]>([])
   const [total, setTotal] = React.useState(0)
   const [hasMore, setHasMore] = React.useState(false)
@@ -121,13 +126,15 @@ export default function CasesPage() {
           <h2 className="text-xl font-semibold tracking-tight">Cases</h2>
           <p className="text-sm text-muted-foreground">Investigations, assignments, and resolutions.</p>
         </div>
-        <Button
-          size="sm"
-          onClick={() => setShowCreate((value) => !value)}
-          aria-expanded={showCreate}
-        >
-          {showCreate ? "Cancel" : "Create case"}
-        </Button>
+        {canWrite && (
+          <Button
+            size="sm"
+            onClick={() => setShowCreate((value) => !value)}
+            aria-expanded={showCreate}
+          >
+            {showCreate ? "Cancel" : "Create case"}
+          </Button>
+        )}
       </div>
 
       {showCreate && (

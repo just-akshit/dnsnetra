@@ -233,7 +233,8 @@ def test_entity_snapshot_captures_up_to_500_recent_queries():
         start_time=None, end_time=None, filters={},
     )
 
-    assert reporting.query_kwargs["domain"] == "example.com"
+    assert reporting.query_kwargs["domain_exact"] == "example.com"
+    assert "domain" not in reporting.query_kwargs
     assert reporting.query_kwargs["limit"] == 500
     assert reporting.query_kwargs["offset"] == 0
     assert len(snapshot["dossier"]["recent_queries"]) == 500
@@ -313,6 +314,33 @@ def test_query_set_create_requires_a_window_or_filter():
             kind="query_set", entity=None, window=None, start_time=None,
             end_time=None, filters={}, title=None, user_id=1,
         )
+
+
+@pytest.mark.parametrize("filters", [{"search": "   "}, {"bogus": "x"}])
+def test_query_set_create_rejects_blank_or_unknown_filters(filters):
+    service = ReportService(
+        repository=_FakeRepository(), reporting_service=_FakeReporting(),
+    )
+
+    with pytest.raises(ValueError):
+        service.create(
+            kind="query_set", entity=None, window=None, start_time=None,
+            end_time=None, filters=filters, title=None, user_id=1,
+        )
+
+
+def test_query_set_create_accepts_a_trimmed_known_filter():
+    repository = _FakeRepository()
+    service = ReportService(
+        repository=repository, reporting_service=_FakeReporting(),
+    )
+
+    service.create(
+        kind="query_set", entity=None, window=None, start_time=None,
+        end_time=None, filters={"search": "  beacon  "}, title=None, user_id=1,
+    )
+
+    assert repository.created["filters"] == {"search": "  beacon  "}
 
 
 def test_create_canonicalizes_domain_entity():

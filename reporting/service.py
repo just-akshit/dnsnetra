@@ -533,6 +533,7 @@ class ReportingService:
         self,
         client_ip: Optional[str] = None,
         domain: Optional[str] = None,
+        domain_exact: Optional[str] = None,
         verdict: Optional[Any] = None,
         query_type: Optional[str] = None,
         time_range: Optional[Union[ResolvedTimeRange, datetime, str]] = None,
@@ -564,6 +565,10 @@ class ReportingService:
                 raise ReportingValidationError(f"Invalid client IP address: {client_ip}")
 
         clean_dom = domain.strip().lower() if domain and domain.strip() else None
+        clean_dom_exact = (
+            domain_exact.strip().lower()
+            if domain_exact and domain_exact.strip() else None
+        )
 
         canon_verdict = None
         if verdict:
@@ -596,6 +601,7 @@ class ReportingService:
         total, rows = self.repository.get_queries(
             client_ip=clean_ip,
             domain=clean_dom,
+            domain_exact=clean_dom_exact,
             verdict=canon_verdict,
             query_type=clean_qt,
             start_time=q_start,

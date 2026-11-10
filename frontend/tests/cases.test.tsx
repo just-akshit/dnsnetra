@@ -124,6 +124,17 @@ describe("cases UI", () => {
     expect(list.mock.calls.length).toBeGreaterThan(1)
   })
 
+  it("hides the create affordance from support", async () => {
+    mockUser.current = { id: 2, username: "support", role: "SUPPORT" }
+    vi.spyOn(dnsnetraApi, "listCases").mockResolvedValue(listOf(caseSummary))
+
+    render(<CasesPage />)
+    expect(await screen.findByText("Investigate beacon.example")).toBeInTheDocument()
+    expect(
+      screen.queryByRole("button", { name: "Create case" })
+    ).not.toBeInTheDocument()
+  })
+
   it("self-assigns an unassigned case", async () => {
     vi.spyOn(dnsnetraApi, "getCase").mockResolvedValue(caseDetail())
     const update = vi.spyOn(dnsnetraApi, "updateCase").mockResolvedValue(

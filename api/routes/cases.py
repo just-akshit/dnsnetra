@@ -156,12 +156,11 @@ def update_case(
     if "assigned_to" in data and data["assigned_to"] != case.assigned_to:
         _audit(AuditAction.CASE_ASSIGNED, request, current_user, public_id,
                **{"from": case.assigned_to, "to": data["assigned_to"]})
-    resolution_changed = (
-        "resolution" in data and data["resolution"] != case.resolution
-    )
-    if (updated.status == "resolved" and case.status != "resolved") or resolution_changed:
+    if updated.status == "resolved" and case.status != "resolved":
         _audit(AuditAction.CASE_RESOLVED, request, current_user, public_id,
                resolution=updated.resolution)
+    # A resolution-only change on an unresolved case is already covered by the
+    # CASE_UPDATED audit above; it must not claim the case was resolved.
     if updated.status == "closed" and case.status != "closed":
         _audit(AuditAction.CASE_CLOSED, request, current_user, public_id)
     return updated

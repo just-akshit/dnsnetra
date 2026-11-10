@@ -72,6 +72,16 @@ def test_review_requires_a_conclusion(analyst_headers, created_reports):
     assert res.status_code == 400
 
 
+def test_review_rejects_explicit_null_status(analyst_headers, created_reports):
+    public_id = _create_report(analyst_headers, created_reports)
+    res = client.patch(
+        f"/api/v1/reports/saved/{public_id}/review",
+        headers=analyst_headers,
+        json={"status": None},
+    )
+    assert res.status_code == 400
+
+
 def test_archive_writes_audit_and_is_idempotent(analyst_headers, created_reports):
     public_id = _create_report(analyst_headers, created_reports)
 
@@ -330,3 +340,45 @@ def test_entity_report_summary_and_row_count_are_entity_scoped(
     assert snapshot["summary"]["total_queries"] == len(ids)
     assert len(snapshot["dossier"]["recent_queries"]) == len(ids)
     assert sum(b["total_queries"] for b in snapshot["timeline"]) == len(ids)
+
+
+@pytest.fixture
+def seeded_similar_domains():
+    """One exact domain plus subdomain/lookalike rows, always removed."""
+    domain = "task-c3-exact.example.test"
+    lookalikes = (f"sub.{domain}", f"not{domain}")
+    ids = []
+    for index, value in enumerate((domain, *lookalikes)):
+        rows = db(
+            """
+            INSERT INTO domain_query_history
+                (timestamp, client_ip, domain, query_type, final_label,
+                 ti_source, response_code)
+            VALUES (NOW(), %s, %s, 'A', 'Malicious', 'pytest', 'NOERROR')
+            RETURNING id;
+            """,
+            (f"203.0.113.{60 + index}", value),
+        )
+        ids.append(rows[0][0])
+    yield domain, ids
+    db("DELETE FROM domain_query_history WHERE id = ANY(%s::bigint[])", (ids,))
+
+
+def test_entity_report_recent_queries_match_the_domain_exactly(
+    analyst_headers, created_reports, seeded_similar_domains
+):
+    domain, ids = seeded_similar_domains
+    res = client.post(
+        "/api/v1/reports/saved",
+        headers=analyst_headers,
+        json={"kind": "entity_domain", "entity": domain, "window": "24h"},
+    )
+    assert res.status_code == 201, res.text
+    body = res.json()
+    created_reports.append(body["public_id"])
+
+    snapshot = body["snapshot"]
+    assert snapshot["row_count"] == 1
+    recent = snapshot["dossier"]["recent_queries"]
+    assert [row["domain"] for row in recent] == [domain]
+    assert len(ids) == 3

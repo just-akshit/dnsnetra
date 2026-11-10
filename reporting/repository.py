@@ -575,6 +575,7 @@ class ReportingRepository:
         self,
         client_ip: Optional[str] = None,
         domain: Optional[str] = None,
+        domain_exact: Optional[str] = None,
         verdict: Optional[str] = None,
         query_type: Optional[str] = None,
         start_time: Optional[datetime] = None,
@@ -587,6 +588,9 @@ class ReportingRepository:
     ) -> Tuple[int, List[Dict[str, Any]]]:
         """
         Multi-criteria paginated query on authoritative domain_query_history with SQL search and sorting.
+
+        ``domain`` is a substring match (query-log search); ``domain_exact``
+        matches one domain exactly, for entity-scoped snapshots.
         """
         clauses = []
         params: List[Any] = []
@@ -598,6 +602,10 @@ class ReportingRepository:
         if domain:
             clauses.append("domain ILIKE %s")
             params.append(f"%{domain.strip().lower()}%")
+
+        if domain_exact:
+            clauses.append("domain = %s")
+            params.append(domain_exact.strip().lower())
 
         if verdict:
             clauses.append("final_label = %s")

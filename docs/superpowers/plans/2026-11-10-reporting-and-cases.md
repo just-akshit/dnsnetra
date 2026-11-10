@@ -849,6 +849,12 @@ class _Conn:
         self._cursor = _Cursor(rows)
         self.committed = False
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
     def cursor(self, *args, **kwargs):
         return self._cursor
 
@@ -1859,9 +1865,11 @@ def build_xlsx(snapshot: dict) -> bytes:
 
         relationships = workbook.create_sheet("Relationships")
         relationships.append(["Entity", "Queries", "Last seen"])
-        for item in dossier.get("top_clients") or dossier.get("top_domains") or []:
+        for item in (dossier.get("top_querying_clients")
+                     or dossier.get("top_domains") or []):
             relationships.append([_safe(item.get("client_ip") or item.get("domain")),
-                                  item.get("total_queries"), item.get("last_seen")])
+                                  item.get("total_queries") or item.get("visit_count"),
+                                  item.get("last_seen")])
 
         queries = workbook.create_sheet("Queries")
         queries.append(["Timestamp", "Client IP", "Domain", "Type", "Verdict", "Source"])

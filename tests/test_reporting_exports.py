@@ -111,6 +111,36 @@ def test_export_filename_is_stamped_and_sanitized():
     assert re.search(r"_\d{8}T\d{6}Z\.csv$", name)
 
 
+def test_xlsx_sanitizes_user_supplied_report_metadata():
+    from openpyxl import load_workbook
+
+    report = {
+        "public_id": "=RPT-2026-000001",
+        "title": "=cmd|' /C calc'!A0",
+        "status": "=1+1",
+        "verdict": "=evil",
+        "conclusion": "@SUM(A1:A9)",
+        "reviewed_by": 7,
+        "row_count": 1,
+    }
+    workbook = load_workbook(BytesIO(build_xlsx(SNAPSHOT, report, exported_rows=1)))
+
+    cells = {}
+    for sheet in ("Summary", "Assessment"):
+        for row in workbook[sheet].iter_rows():
+            if row[0].value:
+                cells[(sheet, row[0].value)] = row[1]
+
+    for (sheet, label), cell in cells.items():
+        if label in ("Report ID", "Title", "Status", "Verdict", "Conclusion"):
+            assert isinstance(cell.value, str), (sheet, label, cell.value)
+            assert cell.value.startswith("'"), (sheet, label, cell.value)
+            assert cell.data_type != "f", (sheet, label, cell.data_type)
+
+    assert cells[("Summary", "Title")].value == "'=cmd|' /C calc'!A0"
+    assert cells[("Assessment", "Conclusion")].value == "'@SUM(A1:A9)"
+
+
 def test_formula_cells_are_neutralized():
     assert sanitize_csv_cell("=cmd|' /C calc'!A0") == "'=cmd|' /C calc'!A0"
     assert sanitize_csv_cell("+1") == "'+1"

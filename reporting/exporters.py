@@ -142,11 +142,11 @@ def build_xlsx(
     entity = (snapshot.get("entity") or {}).get("value")
     if entity is not None:
         summary.append(["Entity", sanitize_csv_cell(entity)])
-        summary.append(["Window", (snapshot.get("window") or {}).get("label")])
+        summary.append(["Window", sanitize_csv_cell((snapshot.get("window") or {}).get("label"))])
         summary.append(["Observed in network", snapshot.get("observed_in_network")])
     if report:
         for label, key in _REPORT_SUMMARY_FIELDS:
-            summary.append([label, report.get(key)])
+            summary.append([label, sanitize_csv_cell(report.get(key))])
         summary.append(["Row count at creation", report.get("row_count")])
         summary.append(["Rows exported", exported_rows])
 
@@ -186,13 +186,13 @@ def build_xlsx(
     intelligence = workbook.create_sheet("Intelligence")
     intelligence.append(["Field", "Value", "Status", "Malicious", "Total", "Checked at"])
     intelligence.append([
-        "Verdict", (live.get("verdict") or {}).get("state"),
+        "Verdict", sanitize_csv_cell((live.get("verdict") or {}).get("state")),
         None, None, None, live.get("checked_at"),
     ])
     for provider in live.get("providers") or []:
         intelligence.append([
             "Provider", sanitize_csv_cell(provider.get("provider")),
-            provider.get("status"), provider.get("malicious"),
+            sanitize_csv_cell(provider.get("status")), provider.get("malicious"),
             provider.get("total"), live.get("checked_at"),
         ])
 
@@ -200,9 +200,11 @@ def build_xlsx(
     assessment.append(["Field", "Value"])
     if report:
         for label, key in _ASSESSMENT_FIELDS:
-            assessment.append([label, report.get(key)])
+            assessment.append([label, sanitize_csv_cell(report.get(key))])
     assessment.append(["Generated at", provenance.get("generated_at")])
-    assessment.append(["Sources", ", ".join(provenance.get("sources") or [])])
+    assessment.append([
+        "Sources", sanitize_csv_cell(", ".join(provenance.get("sources") or [])),
+    ])
 
     buffer = io.BytesIO()
     workbook.save(buffer)

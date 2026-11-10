@@ -133,6 +133,36 @@ class CaseRepository:
             conn.commit()
         return self.get(public_id) if changed else None
 
+    def update_with_event(self, public_id: str, fields: dict[str, Any], *,
+                          actor_id, kind, metadata=None) -> Optional[CaseDetail]:
+        """Update a case and append its timeline event in one transaction."""
+        allowed = {"status", "priority", "assigned_to", "resolution",
+                   "resolved_by", "resolved_at", "closed_at", "title", "description"}
+        clean = {k: v for k, v in fields.items() if k in allowed}
+        if not clean:
+            return self.get(public_id)
+        assignments = ", ".join(f"{k} = %s" for k in clean)
+        with self._conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"UPDATE cases SET {assignments}, updated_at = NOW() "
+                    "WHERE public_id = %s RETURNING id;",
+                    tuple(clean.values()) + (public_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    conn.rollback()
+                    return None
+                cur.execute(
+                    """
+                    INSERT INTO case_events (case_id, actor_id, kind, body, metadata)
+                    VALUES (%s, %s, %s, %s, %s::jsonb);
+                    """,
+                    (row[0], actor_id, kind, None, json.dumps(metadata or {})),
+                )
+            conn.commit()
+        return self.get(public_id)
+
     def add_event(self, case_id: int, *, actor_id, kind, body=None, metadata=None) -> None:
         with self._conn() as conn:
             with conn.cursor() as cur:
@@ -161,5 +191,54 @@ class CaseRepository:
                     "UPDATE reports SET case_id = COALESCE(case_id, %s) WHERE id = %s;",
                     (case_id, report_id),
                 )
+            conn.commit()
+        return inserted
+
+    def link_report_with_event(self, case_id: int, report_id: int, linked_by: int,
+                               *, actor_id, metadata=None) -> bool:
+        """Link a report to a case, backfill it, and log the event atomically.
+
+        The report row is locked so two concurrent links cannot race the
+        one-case-per-report invariant. Linking an already-linked report to
+        the same case is idempotent and does not duplicate the event.
+        """
+        with self._conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT case_id FROM reports WHERE id = %s FOR UPDATE;",
+                    (report_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    conn.rollback()
+                    raise LookupError("Report not found.")
+                existing = row[0]
+                if existing is not None and existing != case_id:
+                    conn.rollback()
+                    raise ValueError("Report is already linked to another case.")
+
+                cur.execute(
+                    """
+                    INSERT INTO case_reports (case_id, report_id, linked_by)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (case_id, report_id) DO NOTHING;
+                    """,
+                    (case_id, report_id, linked_by),
+                )
+                inserted = cur.rowcount > 0
+                if existing is None:
+                    cur.execute(
+                        "UPDATE reports SET case_id = %s "
+                        "WHERE id = %s AND case_id IS NULL;",
+                        (case_id, report_id),
+                    )
+                if inserted:
+                    cur.execute(
+                        """
+                        INSERT INTO case_events (case_id, actor_id, kind, body, metadata)
+                        VALUES (%s, %s, 'report_linked', %s, %s::jsonb);
+                        """,
+                        (case_id, actor_id, None, json.dumps(metadata or {})),
+                    )
             conn.commit()
         return inserted

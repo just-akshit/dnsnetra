@@ -1,9 +1,11 @@
 """Case lifecycle rules without a database."""
 
+from datetime import datetime, timezone
+
 import pytest
 
-from cases.schemas import CasePriority, CaseResolution, CaseStatus
-from cases.service import InvalidTransition, CaseService
+from cases.schemas import CaseDetail, CasePriority, CaseResolution, CaseStatus
+from cases.service import InvalidTransition, PermissionDenied, CaseService
 
 
 @pytest.mark.parametrize("current,next_status", [
@@ -59,3 +61,121 @@ def test_reopening_closed_requires_manage():
             current="closed", next_status="investigating",
             resolution=None, can_manage=False,
         )
+
+
+def test_reopening_closed_is_allowed_with_manage():
+    CaseService.validate_transition(
+        current="closed", next_status="investigating",
+        resolution=None, can_manage=True,
+    )
+
+
+def test_reopening_closed_without_manage_raises_permission_denied():
+    with pytest.raises(PermissionDenied):
+        CaseService.validate_transition(
+            current="closed", next_status="investigating",
+            resolution=None, can_manage=False,
+        )
+
+
+def _case(**overrides):
+    now = datetime.now(timezone.utc)
+    data = dict(
+        id=1,
+        public_id="CASE-2026-000001",
+        title="Suspicious domain",
+        status="open",
+        priority="medium",
+        created_at=now,
+        updated_at=now,
+    )
+    data.update(overrides)
+    return CaseDetail(**data)
+
+
+class FakeRepository:
+    def __init__(self, case):
+        self.case = case
+        self.calls = []
+
+    def get(self, public_id):
+        return self.case
+
+    def update(self, public_id, fields):
+        self.calls.append(("update", fields))
+        return self.case
+
+    def update_with_event(self, public_id, fields, *, actor_id, kind, metadata=None):
+        self.calls.append(("update_with_event", fields, kind, metadata))
+        return self.case
+
+    def link_report_with_event(self, case_id, report_id, linked_by, *,
+                               actor_id, metadata=None):
+        self.calls.append(("link_report_with_event", report_id, metadata))
+        return True
+
+
+def test_update_without_status_change_keeps_timestamps():
+    case = _case(status="resolved")
+    repository = FakeRepository(case)
+
+    CaseService(repository).update(
+        case.public_id, actor_id=2, can_manage=True,
+        payload={"priority": "high"},
+    )
+
+    assert repository.calls == [("update", {"priority": "high"})]
+
+
+def test_reopening_clears_resolution_and_close_timestamps():
+    now = datetime.now(timezone.utc)
+    case = _case(status="closed", closed_at=now, resolved_at=now, resolved_by=3)
+    repository = FakeRepository(case)
+
+    CaseService(repository).update(
+        case.public_id, actor_id=2, can_manage=True,
+        payload={"status": "investigating"},
+    )
+
+    (call, fields, kind, metadata), = repository.calls
+    assert call == "update_with_event"
+    assert fields == {
+        "status": "investigating",
+        "closed_at": None,
+        "resolved_by": None,
+        "resolved_at": None,
+    }
+    assert kind == "status_changed"
+    assert metadata == {"from": "closed", "to": "investigating", "resolution": None}
+
+
+def test_create_rejects_unknown_entity_type():
+    with pytest.raises(ValueError):
+        CaseService(FakeRepository(_case())).create(
+            title="t", description=None, priority="medium",
+            entity_type="ip", entity_value="192.0.2.1", created_by=1,
+        )
+
+
+def test_update_rejects_unknown_priority():
+    case = _case()
+    with pytest.raises(ValueError):
+        CaseService(FakeRepository(case)).update(
+            case.public_id, actor_id=2, can_manage=True,
+            payload={"priority": "urgent"},
+        )
+
+
+def test_link_report_uses_atomic_repository_call():
+    case = _case()
+    repository = FakeRepository(case)
+
+    linked = CaseService(repository).link_report(
+        case.public_id, report_id=9, actor_id=2,
+        report_public_id="RPT-2026-000001",
+    )
+
+    assert linked is True
+    assert repository.calls == [
+        ("link_report_with_event", 9, {"report_public_id": "RPT-2026-000001"}),
+    ]

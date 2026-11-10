@@ -765,6 +765,31 @@ export const dnsnetraApi = {
     URL.revokeObjectURL(downloadUrl)
   },
 
+  /** List cases in the investigation queue */
+  async listCases(params: { status?: string; priority?: string; unassigned?: boolean; assigned_to_me?: boolean; limit?: number; offset?: number } = {}): Promise<import("@/lib/reporting/types").CaseList> {
+    return apiFetch("/api/v1/cases", params)
+  },
+
+  /** Get one case with its timeline and linked reports */
+  async getCase(publicId: string): Promise<import("@/lib/reporting/types").CaseDetail> {
+    return apiFetch(`/api/v1/cases/${encodeURIComponent(publicId)}`)
+  },
+
+  /** Open a new case, optionally from an existing report */
+  async createCase(body: { title: string; description?: string; priority?: string; entity_type?: string; entity_value?: string; report_id?: string }): Promise<import("@/lib/reporting/types").CaseDetail> {
+    return apiFetch("/api/v1/cases", {}, { method: "POST", body })
+  },
+
+  /** Move a case through its lifecycle */
+  async updateCase(publicId: string, body: Record<string, unknown>): Promise<import("@/lib/reporting/types").CaseDetail> {
+    return apiFetch(`/api/v1/cases/${encodeURIComponent(publicId)}`, {}, { method: "PATCH", body })
+  },
+
+  /** Append a comment to a case timeline */
+  async commentCase(publicId: string, body: string): Promise<import("@/lib/reporting/types").CaseDetail> {
+    return apiFetch(`/api/v1/cases/${encodeURIComponent(publicId)}/comments`, {}, { method: "POST", body: { body } })
+  },
+
   /** Get complete unified dashboard data */
   async getDashboard(
     params: {

@@ -66,7 +66,7 @@ Rules:
 
 ## 6. Data model
 
-Migration `012_reporting_and_cases.sql` is additive. No existing table changes except two nullable audit columns. The migration creates `cases` before `reports` because `reports.case_id` references it.
+Two additive migrations: `012_audit_target_columns.sql` (audit targeting, ships with phase 0) and `013_reporting_and_cases.sql` (new tables, ships with phase 1). The table migration creates `cases` before `reports` because `reports.case_id` references it.
 
 ### 6.1 `reports`
 
@@ -449,7 +449,7 @@ These land before the new feature because the new surfaces depend on them:
 
 - Unit: snapshot composer for domain, client, and query-set reports; state machine transitions; CSV sanitizer; ID formatting; snapshot `schema_version` handling.
 - API: create/list/detail/review/archive; permission matrix per role; unseen entity path; provider-failure path; export headers, filenames, row caps, audit rows; case create/patch/comment/link; 409 transitions.
-- DB: migration 012 applies cleanly on a populated database; indexes exist; audit columns nullable.
+- DB: migrations 012 and 013 apply cleanly on a populated database; indexes exist; audit columns nullable.
 - Regression: existing `test_reporting_*`, `test_api_v1`, `test_investigation_*` stay green.
 
 **Frontend**
@@ -466,9 +466,9 @@ These land before the new feature because the new surfaces depend on them:
 | Phase | Deliverable |
 |---|---|
 | 0 | Prerequisite fixes (section 14) with tests |
-| 1 | Migration 012, report composer, report CRUD/review routes, tests |
+| 1 | Migration 013, report composer, report CRUD/review routes, tests |
 | 2 | XLSX writer, entity/report export routes, export audit |
-| 3 | Cases routes/permissions/audit, state machine (tables ship in migration 012) |
+| 3 | Cases routes/permissions/audit, state machine (tables ship in migration 013) |
 | 4 | Frontend: saved reports, cases, dossier and daily-review actions |
 | 5 | Accessibility/empty-state polish, manual XLSX verification |
 

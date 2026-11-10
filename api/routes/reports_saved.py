@@ -8,19 +8,29 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
 
 from api.audit import AuditAction, log_audit_event
+from api.rate_limiter import enforce_search_rate_limit
 from api.rbac import require_permission
 from api.schemas.reports_saved import (
     ReportCreateRequest, ReportListResponse, ReportReviewRequest,
     SavedReportDetail,
 )
 from investigation.schemas import InvalidEntityError
-from reporting.exporters import build_xlsx, safe_filename_part, snapshot_csv_chunks
+from reporting.exporters import (
+    build_xlsx,
+    export_filename,
+    snapshot_csv_chunks,
+)
 from reporting.report_schemas import ReportStatus
 from reporting.report_service import ReportService
 from reporting.schemas import ReportingValidationError
+from reporting.service import ReportingService
 from time_engine import InvalidTimeRangeError, TimeEngineValidationError
 
 router = APIRouter(prefix="/api/v1/reports/saved", tags=["Saved Reports"])
+
+# Event rows a query-set export may contain (same cap as the query-log export).
+_EXPORT_ROW_CAP = 50_000
+_QUERY_PAGE_SIZE = 1_000
 
 # Expected client-side validation failures; anything else is a server error.
 _CREATE_VALIDATION_ERRORS = (
@@ -137,6 +147,65 @@ def archive_report(
     return None
 
 
+def _iso(value):
+    return value.isoformat() if value else None
+
+
+def _query_filters(report) -> dict:
+    """Extract the stored query-set filters, dropping empty and 'all' verdicts."""
+    filters = report.filters or {}
+    verdict = filters.get("verdict")
+    if verdict and str(verdict).strip().lower() in ("", "all"):
+        verdict = None
+    return {
+        "client_ip": filters.get("client_ip") or None,
+        "domain": filters.get("domain") or None,
+        "verdict": verdict,
+        "query_type": filters.get("query_type") or None,
+        "search": filters.get("search") or None,
+    }
+
+
+def _report_metadata(report) -> dict:
+    """Saved-report fields surfaced in the Summary and Assessment sheets."""
+    return {
+        "public_id": report.public_id,
+        "title": report.title,
+        "kind": report.kind,
+        "status": report.status,
+        "verdict": report.verdict,
+        "conclusion": report.conclusion,
+        "reviewed_by": report.reviewed_by,
+        "reviewed_at": _iso(report.reviewed_at),
+        "created_at": _iso(report.created_at),
+        "window_start": _iso(report.window_start),
+        "window_end": _iso(report.window_end),
+        "row_count": report.row_count,
+    }
+
+
+def _collect_query_rows(service, query_filters, window_start, window_end) -> list[dict]:
+    """Page through matching events up to the export cap for workbook output."""
+    rows: list[dict] = []
+    offset = 0
+    while len(rows) < _EXPORT_ROW_CAP:
+        page = service.get_queries(
+            **query_filters,
+            start_time=window_start,
+            end_time=window_end,
+            limit=min(_QUERY_PAGE_SIZE, _EXPORT_ROW_CAP - len(rows)),
+            offset=offset,
+        )
+        for item in page.items:
+            row = item.model_dump()
+            row["verdict"] = row.pop("final_label", None)
+            rows.append(row)
+        if not page.has_more or not page.items:
+            break
+        offset += len(page.items)
+    return rows
+
+
 @router.post("/{public_id}/export")
 def export_report(
     public_id: str,
@@ -144,22 +213,81 @@ def export_report(
     format: str = Query("csv", pattern="^(csv|xlsx)$"),
     current_user: dict[str, Any] = Depends(require_permission("reports:export")),
 ):
-    """Export a saved report's snapshot as CSV or XLSX."""
+    """Export a saved report as CSV or XLSX.
+
+    Entity reports export their frozen snapshot; query-set reports re-run the
+    stored filters against the live query log so the file contains real events.
+    """
+    enforce_search_rate_limit(request)
+
     report = ReportService().get_report(public_id)
     if not report:
         raise HTTPException(status_code=404, detail="Report not found.")
 
-    _audit(AuditAction.REPORT_EXPORTED, request, current_user, public_id, format=format)
-
-    filename = f"dnsnetra_{safe_filename_part(public_id)}.{format}"
+    service = ReportingService()
+    filters = report.filters or {}
+    meta = _report_metadata(report)
     headers = {
-        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Content-Disposition": f'attachment; filename="{export_filename(public_id, format)}"',
         "Cache-Control": "no-store",
     }
+    xlsx_media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+    if report.kind == "query_set":
+        query_filters = _query_filters(report)
+        try:
+            if format == "xlsx":
+                rows = _collect_query_rows(
+                    service, query_filters, report.window_start, report.window_end
+                )
+                exported = len(rows)
+                _audit(
+                    AuditAction.REPORT_EXPORTED, request, current_user, public_id,
+                    format=format, row_count=report.row_count,
+                    exported_rows=exported, filters=filters,
+                )
+                return Response(
+                    content=build_xlsx(
+                        report.snapshot, meta, queries=rows, exported_rows=exported
+                    ),
+                    media_type=xlsx_media_type,
+                    headers=headers,
+                )
+
+            total = service.get_queries(
+                **query_filters,
+                start_time=report.window_start,
+                end_time=report.window_end,
+                limit=1,
+            ).total
+            exported = min(total, _EXPORT_ROW_CAP)
+            stream = service.stream_queries_csv(
+                **query_filters,
+                start_time=report.window_start,
+                end_time=report.window_end,
+                limit=_EXPORT_ROW_CAP,
+            )
+        except ReportingValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        _audit(
+            AuditAction.REPORT_EXPORTED, request, current_user, public_id,
+            format=format, row_count=report.row_count,
+            exported_rows=exported, filters=filters,
+        )
+        return StreamingResponse(stream, media_type="text/csv", headers=headers)
+
+    # Entity snapshots are frozen at creation time.
+    exported = len((report.snapshot.get("dossier") or {}).get("recent_queries") or [])
+    _audit(
+        AuditAction.REPORT_EXPORTED, request, current_user, public_id,
+        format=format, row_count=report.row_count,
+        exported_rows=exported, filters=filters,
+    )
     if format == "xlsx":
         return Response(
-            content=build_xlsx(report.snapshot),
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            content=build_xlsx(report.snapshot, meta, exported_rows=exported),
+            media_type=xlsx_media_type,
             headers=headers,
         )
     return StreamingResponse(

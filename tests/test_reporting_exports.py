@@ -1,9 +1,11 @@
 """CSV safety and filter parity."""
 
+import re
 from io import BytesIO
 
 from reporting.exporters import (
     build_xlsx,
+    export_filename,
     sanitize_csv_cell,
     snapshot_csv_chunks,
 )
@@ -47,6 +49,66 @@ def test_xlsx_has_the_six_sheets_and_safe_text():
     ]
     values = [cell.value for row in workbook["Queries"].iter_rows() for cell in row]
     assert "'=evil.example" in values
+
+
+def test_xlsx_assessment_and_intelligence_carry_report_metadata():
+    from openpyxl import load_workbook
+
+    snapshot = {
+        **SNAPSHOT,
+        "dossier": {
+            **SNAPSHOT["dossier"],
+            "live_intel": {
+                "checked_at": "2026-11-10T00:00:00Z",
+                "verdict": {"state": "malicious"},
+                "providers": [
+                    {"provider": "virustotal", "status": "ok",
+                     "malicious": 3, "total": 70},
+                ],
+            },
+        },
+    }
+    report = {
+        "public_id": "RPT-2026-000001",
+        "status": "reviewed",
+        "verdict": "Malicious",
+        "conclusion": "Confirmed malicious.",
+        "reviewed_by": 7,
+        "row_count": 7,
+    }
+    workbook = load_workbook(BytesIO(build_xlsx(snapshot, report, exported_rows=1)))
+
+    assessment = {
+        row[0].value: row[1].value
+        for row in workbook["Assessment"].iter_rows()
+        if row[0].value
+    }
+    assert assessment["Report ID"] == "RPT-2026-000001"
+    assert assessment["Status"] == "reviewed"
+    assert assessment["Verdict"] == "Malicious"
+    assert assessment["Conclusion"] == "Confirmed malicious."
+    assert assessment["Reviewer"] == 7
+
+    intelligence = [
+        [cell.value for cell in row] for row in workbook["Intelligence"].iter_rows()
+    ]
+    assert ["Provider", "virustotal", "ok", 3, 70, "2026-11-10T00:00:00Z"] in intelligence
+
+    summary = {
+        row[0].value: row[1].value
+        for row in workbook["Summary"].iter_rows()
+        if row[0].value
+    }
+    assert summary["Report ID"] == "RPT-2026-000001"
+    assert summary["Row count at creation"] == 7
+    assert summary["Rows exported"] == 1
+
+
+def test_export_filename_is_stamped_and_sanitized():
+    name = export_filename('bad/name"x', "csv")
+    assert name.startswith("dnsnetra_bad_name_x_")
+    assert name.endswith(".csv")
+    assert re.search(r"_\d{8}T\d{6}Z\.csv$", name)
 
 
 def test_formula_cells_are_neutralized():

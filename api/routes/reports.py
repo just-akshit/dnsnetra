@@ -42,7 +42,11 @@ from investigation.schemas import (
 )
 from investigation.service import InvestigationService
 from labeler.intel.database import normalize_domain
-from reporting.exporters import build_xlsx, safe_filename_part, snapshot_csv_chunks
+from reporting.exporters import (
+    build_xlsx,
+    export_filename,
+    snapshot_csv_chunks,
+)
 from reporting.report_service import ReportService
 from reporting.schemas import ReportingValidationError
 from reporting.service import ReportingService
@@ -555,6 +559,8 @@ def export_entity_report(
     current_user: dict[str, Any] = Depends(require_permission("reports:export")),
 ):
     """Build an entity snapshot on demand and stream it back as an export."""
+    enforce_search_rate_limit(request)
+
     clean_entity = entity.strip()
     if not clean_entity:
         raise HTTPException(
@@ -590,6 +596,7 @@ def export_entity_report(
     except InvalidEntityError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
+    exported_rows = len((snapshot.get("dossier") or {}).get("recent_queries") or [])
     log_audit_event(
         action=AuditAction.REPORT_EXPORTED,
         user_id=current_user["id"],
@@ -597,17 +604,25 @@ def export_entity_report(
         user_agent=request.headers.get("user-agent"),
         target_type="export",
         target_id=clean_entity,
-        metadata={"format": format, "one_shot": True, "entity_type": effective},
+        metadata={
+            "format": format,
+            "one_shot": True,
+            "entity_type": effective,
+            "row_count": snapshot.get("row_count", 0),
+            "exported_rows": exported_rows,
+            "filters": {},
+        },
     )
 
-    filename = f"dnsnetra_{effective}_{safe_filename_part(clean_entity)}.{format}"
     headers = {
-        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Content-Disposition": (
+            f'attachment; filename="{export_filename(clean_entity, format)}"'
+        ),
         "Cache-Control": "no-store",
     }
     if format == "xlsx":
         return Response(
-            content=build_xlsx(snapshot),
+            content=build_xlsx(snapshot, exported_rows=exported_rows),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers=headers,
         )

@@ -1,6 +1,8 @@
 """Unit tests for LiveIntelService with fake providers (no network, no database)."""
 
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -154,6 +156,92 @@ def test_cache_prevents_duplicate_provider_calls():
     assert second is first
     assert vt.calls == 1
     assert otx.calls == 1
+
+
+def test_concurrent_lookups_for_the_same_indicator_make_one_provider_call():
+    """Two analysts opening the same unseen domain must share one upstream lookup.
+
+    Each request builds its own LiveIntelService, so single-flight has to live
+    at module scope alongside the cache, not on the instance.
+    """
+    entered = threading.Event()
+    release = threading.Event()
+    calls = 0
+    lock = threading.Lock()
+
+    class BlockingProvider(FakeProvider):
+        def lookup(self, value: str) -> ThreatProviderResult:
+            nonlocal calls
+            with lock:
+                calls += 1
+            entered.set()
+            assert release.wait(2), "provider was never released"
+            return self.result
+
+    vt = BlockingProvider("VirusTotal", vt_result())
+    otx = FakeProvider("AlienVault OTX", otx_result(0))
+    barrier = threading.Barrier(6)
+
+    def lookup() -> object:
+        barrier.wait()
+        return LiveIntelService(
+            providers=[vt, otx],
+            dns_resolver=FakeDNS(),
+            rdap_enricher=FakeRDAP(),
+        ).lookup_domain("concurrent.example")
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = [pool.submit(lookup) for _ in range(6)]
+        assert entered.wait(2), "provider was never called"
+        # All six are now inside _cached; the leader is blocked upstream.
+        time.sleep(0.1)
+        assert calls == 1, "concurrent lookups must collapse into one upstream call"
+        release.set()
+        reports = [future.result() for future in futures]
+
+    assert len({id(report) for report in reports}) == 1
+
+
+def test_failed_build_wakes_waiters_and_clears_the_flight():
+    """A raising leader must not poison the slot or strand its followers."""
+    entered = threading.Event()
+    release = threading.Event()
+    calls = 0
+    lock = threading.Lock()
+
+    def failing_builder() -> object:
+        nonlocal calls
+        with lock:
+            calls += 1
+        entered.set()
+        assert release.wait(2), "builder was never released"
+        raise RuntimeError("provider is down")
+
+    live = service(FakeProvider("VirusTotal", vt_result()), FakeProvider("AlienVault OTX", otx_result(0)))
+    barrier = threading.Barrier(3)
+    outcomes: list[str] = []
+
+    def worker() -> None:
+        barrier.wait()
+        try:
+            live._cached("domain:fail.example", failing_builder)
+        except RuntimeError as exc:
+            outcomes.append(str(exc))
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = [pool.submit(worker) for _ in range(3)]
+        assert entered.wait(2)
+        time.sleep(0.1)
+        assert calls == 1
+        release.set()
+        for future in futures:
+            future.result()
+
+    assert outcomes == ["provider is down"] * 3
+
+    # The slot is reusable: this would hang for the inflight timeout if the
+    # failed flight had been left behind.
+    assert live._cached("domain:fail.example", lambda: "recovered") == "recovered"
 
 
 def test_refresh_bypasses_the_cache():

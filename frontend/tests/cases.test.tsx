@@ -135,6 +135,22 @@ describe("cases UI", () => {
     )
   })
 
+  it("announces an empty case detail timeline", async () => {
+    vi.spyOn(dnsnetraApi, "getCase").mockResolvedValue({
+      ...caseSummary,
+      description: null,
+      events: [],
+      reports: [],
+    } as any)
+
+    render(<CaseDetailPage />)
+    expect(await screen.findByText("No events yet.")).toBeInTheDocument()
+    expect(screen.getByText("No linked reports.")).toBeInTheDocument()
+    // Status is rendered as text, not color-only.
+    expect(screen.getByText("open")).toBeInTheDocument()
+    expect(screen.getByLabelText("Comment")).toBeInTheDocument()
+  })
+
   it("blocks a second comment while the first is pending", async () => {
     vi.spyOn(dnsnetraApi, "getCase").mockResolvedValue(caseDetail())
     let resolveComment!: (value: CaseDetail) => void

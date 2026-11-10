@@ -714,6 +714,53 @@ export const dnsnetraApi = {
     window.URL.revokeObjectURL(downloadUrl)
   },
 
+  /** List saved reports (immutable snapshots) */
+  async listSavedReports(params: { status?: string; kind?: string; entity?: string; limit?: number; offset?: number } = {}): Promise<import("@/lib/reporting/types").SavedReportList> {
+    return apiFetch("/api/v1/reports/saved", params)
+  },
+
+  /** Get one saved report with snapshot and review metadata */
+  async getSavedReport(publicId: string): Promise<import("@/lib/reporting/types").SavedReportDetail> {
+    return apiFetch(`/api/v1/reports/saved/${encodeURIComponent(publicId)}`)
+  },
+
+  /** Create an immutable report snapshot from a dossier or query set */
+  async createSavedReport(body: {
+    kind: "entity_domain" | "entity_client" | "query_set"
+    entity?: string
+    window?: string
+    start_time?: string
+    end_time?: string
+    filters?: Record<string, unknown>
+    title?: string
+    refresh?: boolean
+  }): Promise<import("@/lib/reporting/types").SavedReportDetail> {
+    return apiFetch("/api/v1/reports/saved", {}, { method: "POST", body })
+  },
+
+  /** Move a saved report through its review workflow */
+  async reviewSavedReport(publicId: string, body: {
+    status: "draft" | "needs_review" | "reviewed" | "archived"
+    verdict?: string
+    conclusion?: string
+  }): Promise<import("@/lib/reporting/types").SavedReportDetail> {
+    return apiFetch(`/api/v1/reports/saved/${encodeURIComponent(publicId)}/review`, {}, { method: "PATCH", body })
+  },
+
+  /** Download a saved report as CSV or XLSX */
+  async downloadSavedReport(publicId: string, format: "csv" | "xlsx"): Promise<void> {
+    const url = new URL(`/api/v1/reports/saved/${encodeURIComponent(publicId)}/export`, currentApiBase)
+    url.searchParams.set("format", format)
+    const res = await fetch(url.toString(), { method: "POST", credentials: "include", cache: "no-store" })
+    if (!res.ok) throw new ApiError(res.status, `Export failed (${res.status})`)
+    const blob = await res.blob()
+    const link = document.createElement("a")
+    link.href = URL.createObjectURL(blob)
+    link.download = `dnsnetra_${publicId}.${format}`
+    link.click()
+    URL.revokeObjectURL(link.href)
+  },
+
   /** Get complete unified dashboard data */
   async getDashboard(
     params: {

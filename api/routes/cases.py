@@ -7,11 +7,13 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from api.audit import AuditAction, log_audit_event
+from api.auth import get_user_by_id
 from api.rbac import has_permission, require_permission
 from api.schemas.cases import (
-    CaseCommentRequest, CaseCreateRequest, CaseDetail, CaseListResponse,
-    CaseReportLinkRequest, CaseUpdateRequest,
+    CaseCommentRequest, CaseCreateRequest, CaseDetail, CaseReportLinkRequest,
+    CaseSummary, CaseUpdateRequest,
 )
+from api.schemas.common import PaginatedResponse
 from cases.repository import CaseRepository
 from cases.service import CaseService, InvalidTransition, PermissionDenied
 from reporting.report_repository import ReportRepository
@@ -34,11 +36,26 @@ def create_case(
     request: Request,
     current_user: dict[str, Any] = Depends(require_permission("cases:write")),
 ):
+    if payload.assigned_to is not None:
+        if (payload.assigned_to != current_user["id"]
+                and not has_permission(current_user["role"], "cases:manage")):
+            raise HTTPException(
+                status_code=403,
+                detail="Assigning a case to another user requires cases:manage.",
+            )
+        if get_user_by_id(payload.assigned_to) is None:
+            raise HTTPException(status_code=400, detail="Assignee not found.")
+
     report_id: Optional[int] = None
     if payload.report_id:
-        report_id = ReportRepository().get_db_id(payload.report_id)
-        if report_id is None:
+        report = ReportRepository().get(payload.report_id)
+        if report is None:
             raise HTTPException(status_code=404, detail="Report not found.")
+        if report.case_public_id is not None:
+            raise HTTPException(
+                status_code=409, detail="Report is already linked to a case."
+            )
+        report_id = ReportRepository().get_db_id(payload.report_id)
 
     try:
         case = CaseService().create(
@@ -50,23 +67,28 @@ def create_case(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    # Audit the created case before the optional link so a link failure cannot
+    # leave an unaudited case behind.
+    _audit(AuditAction.CASE_CREATED, request, current_user, case.public_id,
+           entity=payload.entity_value, priority=payload.priority,
+           report=payload.report_id)
+
     if report_id is not None:
         try:
             CaseService().link_report(
                 case.public_id, report_id=report_id, actor_id=current_user["id"],
                 report_public_id=payload.report_id,
             )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         case = CaseRepository().get(case.public_id)
 
-    _audit(AuditAction.CASE_CREATED, request, current_user, case.public_id,
-           entity=payload.entity_value, priority=payload.priority,
-           report=payload.report_id)
     return case
 
 
-@router.get("", response_model=CaseListResponse)
+@router.get("", response_model=PaginatedResponse[CaseSummary])
 def list_cases(
     status_filter: Optional[str] = Query(None, alias="status"),
     priority: Optional[str] = Query(None),
@@ -83,7 +105,10 @@ def list_cases(
         assigned_to=current_user["id"] if assigned_to_me else None,
         limit=limit, offset=offset,
     )
-    return CaseListResponse(total=total, limit=limit, offset=offset, items=items)
+    return PaginatedResponse[CaseSummary](
+        total=total, limit=limit, offset=offset,
+        has_more=offset + len(items) < total, items=items,
+    )
 
 
 @router.get("/{public_id}", response_model=CaseDetail)
@@ -112,6 +137,8 @@ def update_case(
         raise HTTPException(status_code=403, detail="Reassigning a case requires cases:manage.")
     if case.assigned_to not in (None, current_user["id"]) and not can_manage:
         raise HTTPException(status_code=403, detail="Only the assignee can update this case.")
+    if data.get("assigned_to") is not None and get_user_by_id(data["assigned_to"]) is None:
+        raise HTTPException(status_code=400, detail="Assignee not found.")
 
     try:
         updated = CaseService().update(

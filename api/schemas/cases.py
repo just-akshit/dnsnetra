@@ -32,18 +32,11 @@ class CaseCommentRequest(BaseModel):
     body: str = Field(..., min_length=1, max_length=10_000)
 
 
-class CaseListResponse(BaseModel):
-    total: int
-    limit: int
-    offset: int
-    items: list[CaseSummary]
-
-
 class CaseReportLinkRequest(BaseModel):
     report_public_id: str
 
 
 __all__ = [
     "CaseCreateRequest", "CaseUpdateRequest", "CaseCommentRequest",
-    "CaseListResponse", "CaseReportLinkRequest", "CaseDetail", "CaseSummary",
+    "CaseReportLinkRequest", "CaseDetail", "CaseSummary",
 ]

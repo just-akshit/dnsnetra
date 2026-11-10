@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import ReportDetailPage from "@/app/(dashboard)/reports/saved/[public_id]/page"
@@ -48,6 +48,7 @@ describe("ReportDetailPage", () => {
     render(<ReportDetailPage />)
     expect(await screen.findByRole("heading", { name: "example.com review" })).toBeInTheDocument()
     expect(screen.getByText("No local telemetry for this window.")).toBeInTheDocument()
+    expect(screen.getByText("No timeline for this window.")).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText("Conclusion"), {
       target: { value: "Not observed locally." },
@@ -169,6 +170,59 @@ describe("ReportDetailPage", () => {
     expect(screen.getByText("domain_query_history, live_intel")).toBeInTheDocument()
     expect(screen.getByText("Live intelligence")).toBeInTheDocument()
     expect(screen.getByText("virustotal")).toBeInTheDocument()
+  })
+
+  it("renders the windowed summary instead of lifetime profile counters", async () => {
+    vi.spyOn(dnsnetraApi, "getSavedReport").mockResolvedValue({
+      ...report,
+      snapshot: {
+        ...report.snapshot,
+        row_count: 7,
+        summary: {
+          total_queries: 7,
+          unique_clients: 2,
+          unique_domains: 1,
+          verdict_breakdown: {
+            benign: 3,
+            malicious: 2,
+            review_needed: 1,
+            unknown: 1,
+          },
+          malicious_query_percentage: 28.57,
+        },
+        timeline: [
+          {
+            timestamp: "2026-11-10T03:00:00Z",
+            total_queries: 7,
+            benign_queries: 3,
+            malicious_queries: 2,
+            review_needed_queries: 1,
+            unknown_queries: 1,
+          },
+        ],
+        dossier: {
+          ...report.snapshot.dossier,
+          profile: { total_queries: 999, unique_clients: 99 },
+        },
+      },
+    } as any)
+
+    render(<ReportDetailPage />)
+
+    expect(await screen.findByText("2026-11-10T03:00:00Z")).toBeInTheDocument()
+
+    const telemetry = screen
+      .getByText("Local telemetry")
+      .closest('[data-slot="card"]') as HTMLElement
+    expect(within(telemetry).getAllByText("7").length).toBeGreaterThan(0)
+    expect(within(telemetry).queryByText("999")).not.toBeInTheDocument()
+    expect(within(telemetry).getByText("28.57%")).toBeInTheDocument()
+
+    const lifetime = screen
+      .getByText("Lifetime profile")
+      .closest('[data-slot="card"]') as HTMLElement
+    expect(within(lifetime).getByText("999")).toBeInTheDocument()
+    expect(screen.queryByText("No timeline for this window.")).not.toBeInTheDocument()
   })
 
   it("seeds the conclusion and shows review metadata for a reviewed report", async () => {

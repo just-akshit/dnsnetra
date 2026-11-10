@@ -79,8 +79,12 @@ def _csv_row(values) -> str:
     return buffer.getvalue()
 
 
-def snapshot_csv_chunks(snapshot: dict) -> Iterator[str]:
-    """Stream a saved-report snapshot as long-format CSV rows."""
+def snapshot_csv_chunks(snapshot: dict, report: dict | None = None) -> Iterator[str]:
+    """Stream a saved-report snapshot as long-format CSV rows.
+
+    ``report`` carries saved-report metadata (title, status, verdict,
+    conclusion, reviewer) for the assessment section of saved-report exports.
+    """
     buffer = io.StringIO()
     csv.DictWriter(buffer, fieldnames=_CSV_FIELDS).writeheader()
     yield buffer.getvalue()
@@ -89,6 +93,9 @@ def snapshot_csv_chunks(snapshot: dict) -> Iterator[str]:
     window = snapshot.get("window") or {}
     dossier = snapshot.get("dossier") or {}
     live = dossier.get("live_intel") or {}
+    registration = dossier.get("registration") or {}
+    dns_records = dossier.get("dns_records") or {}
+    threat_intel = dossier.get("threat_intel") or {}
 
     rows = [
         ("summary", "entity", entity, "telemetry", window.get("start")),
@@ -104,6 +111,72 @@ def snapshot_csv_chunks(snapshot: dict) -> Iterator[str]:
         "intelligence", "live_verdict", (live.get("verdict") or {}).get("state"),
         "live_intel", live.get("checked_at"),
     ))
+
+    if registration:
+        reg_source = registration.get("source") or "rdap"
+        for field, key in (
+            ("registrar", "registrar"),
+            ("created", "created_at"),
+            ("expires", "expires_at"),
+        ):
+            rows.append(("registration", field, registration.get(key), reg_source, None))
+        rows.append((
+            "registration", "nameservers",
+            ", ".join(registration.get("nameservers") or []), reg_source, None,
+        ))
+
+    dns_source = dns_records.get("provider") or "dns"
+    for record_type in ("a", "aaaa", "cname", "ns"):
+        for value in dns_records.get(record_type) or []:
+            rows.append(("dns", record_type.upper(), value, dns_source, None))
+    for mx in dns_records.get("mx") or []:
+        rows.append((
+            "dns", "MX",
+            f"{mx.get('priority')} {mx.get('exchange')}", dns_source, None,
+        ))
+
+    reputation = threat_intel.get("reputation") or {}
+    if reputation:
+        reputation_source = reputation.get("source") or "reputation_domains"
+        checked_at = reputation.get("last_verified_at") or reputation.get("last_seen")
+        for field, key in (
+            ("reputation_status", "status"),
+            ("reputation_source", "source"),
+            ("reputation_confidence", "confidence"),
+        ):
+            rows.append((
+                "threat_intel", field, reputation.get(key), reputation_source, checked_at,
+            ))
+    daily_review = threat_intel.get("daily_review") or {}
+    if daily_review:
+        checked_at = daily_review.get("last_checked_at")
+        for field, key in (
+            ("daily_review_status", "status"),
+            ("daily_review_count", "review_count"),
+            ("daily_review_next_check", "next_check_at"),
+        ):
+            rows.append((
+                "threat_intel", field, daily_review.get(key),
+                "daily_review_domains", checked_at,
+            ))
+    reviewed_clean = threat_intel.get("reviewed_clean") or {}
+    if reviewed_clean:
+        rows.append((
+            "threat_intel", "reviewed_clean_status", reviewed_clean.get("status"),
+            "reviewed_clean_domains", reviewed_clean.get("verified_at"),
+        ))
+
+    if report:
+        for field, key in (
+            ("title", "title"),
+            ("status", "status"),
+            ("verdict", "verdict"),
+            ("conclusion", "conclusion"),
+            ("reviewer", "reviewed_by"),
+        ):
+            rows.append((
+                "assessment", field, report.get(key), "analyst", report.get("reviewed_at"),
+            ))
 
     for row in rows:
         yield _csv_row(row)

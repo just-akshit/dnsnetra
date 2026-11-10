@@ -305,7 +305,7 @@ def export_report(
             headers=headers,
         )
     return StreamingResponse(
-        snapshot_csv_chunks(report.snapshot),
+        snapshot_csv_chunks(report.snapshot, meta),
         media_type="text/csv",
         headers=headers,
     )

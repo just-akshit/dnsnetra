@@ -106,10 +106,35 @@ type Dossier = {
   }
 }
 
+type SnapshotSummary = {
+  total_queries?: number
+  unique_clients?: number
+  unique_domains?: number
+  verdict_breakdown?: {
+    benign?: number
+    malicious?: number
+    review_needed?: number
+    unknown?: number
+  }
+  malicious_query_percentage?: number
+}
+
+type TimelineBucket = {
+  timestamp?: string
+  total_queries?: number
+  benign_queries?: number
+  malicious_queries?: number
+  review_needed_queries?: number
+  unknown_queries?: number
+}
+
 type ReportSnapshot = {
   observed_in_network?: boolean
   entity?: { type?: string; value?: string }
   window?: { start?: string | null; end?: string | null; label?: string | null }
+  row_count?: number
+  summary?: SnapshotSummary
+  timeline?: TimelineBucket[]
   dossier?: Dossier
   provenance?: {
     sources?: string[]
@@ -250,6 +275,10 @@ export default function ReportDetailPage() {
   const snapshot = report.snapshot as ReportSnapshot
   const dossier = snapshot.dossier ?? {}
   const profile = asRecord(dossier.profile)
+  const summary = snapshot.summary ?? {}
+  const breakdown = summary.verdict_breakdown ?? {}
+  const timeline = snapshot.timeline ?? []
+  const hasProfile = Object.keys(profile).length > 0
   const live = dossier.live_intel ?? {}
   const registration = dossier.registration
   const threatIntel = dossier.threat_intel ?? {}
@@ -377,28 +406,113 @@ export default function ReportDetailPage() {
             <p className="text-sm text-muted-foreground">No local telemetry for this window.</p>
           )}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="Total queries" value={asNode(profile.total_queries)} />
-            <StatCard
-              label={profile.unique_domains !== undefined ? "Unique domains" : "Unique clients"}
-              value={asNode(
-                profile.unique_domains !== undefined
-                  ? profile.unique_domains
-                  : profile.unique_clients
-              )}
-            />
-            <StatCard label="Malicious" value={asNode(profile.malicious_queries)} />
-            <StatCard label="Review needed" value={asNode(profile.review_needed_queries)} />
+            <StatCard label="Total queries" value={asNode(summary.total_queries)} />
+            <StatCard label="Unique clients" value={asNode(summary.unique_clients)} />
+            <StatCard label="Unique domains" value={asNode(summary.unique_domains)} />
+            <StatCard label="Malicious" value={asNode(breakdown.malicious)} />
+            <StatCard label="Review needed" value={asNode(breakdown.review_needed)} />
           </div>
           <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
-            <DetailRow label="First seen" value={profile.first_seen as string} mono />
-            <DetailRow label="Last seen" value={profile.last_seen as string} mono />
-            <DetailRow label="Benign queries" value={profile.benign_queries as number} mono />
-            <DetailRow label="Unknown queries" value={profile.unknown_queries as number} mono />
-            <DetailRow label="Last label" value={profile.last_label as string} />
-            <DetailRow label="Last TI source" value={profile.last_ti_source as string} mono />
+            <DetailRow label="Benign queries" value={breakdown.benign} mono />
+            <DetailRow label="Unknown queries" value={breakdown.unknown} mono />
+            <DetailRow
+              label="Malicious %"
+              value={
+                present(summary.malicious_query_percentage)
+                  ? `${summary.malicious_query_percentage}%`
+                  : undefined
+              }
+              mono
+            />
+            <DetailRow label="Rows in window" value={snapshot.row_count} mono />
           </div>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Timeline</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {timeline.length === 0 ? (
+            <p className="p-4 text-sm text-muted-foreground">No timeline for this window.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Timestamp</TableHead>
+                  <TableHead className="text-xs">Total</TableHead>
+                  <TableHead className="text-xs">Benign</TableHead>
+                  <TableHead className="text-xs">Malicious</TableHead>
+                  <TableHead className="text-xs">Review needed</TableHead>
+                  <TableHead className="text-xs">Unknown</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {timeline.map((bucket, index) => (
+                  <TableRow key={bucket.timestamp ?? index}>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {bucket.timestamp ?? "—"}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {bucket.total_queries ?? 0}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {bucket.benign_queries ?? 0}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {bucket.malicious_queries ?? 0}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {bucket.review_needed_queries ?? 0}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {bucket.unknown_queries ?? 0}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {hasProfile && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Lifetime profile</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-1">
+            <p className="pb-1 text-xs text-muted-foreground">
+              All-time counters for this entity, not limited to the report window.
+            </p>
+            <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
+              <DetailRow label="First seen" value={profile.first_seen as string} mono />
+              <DetailRow label="Last seen" value={profile.last_seen as string} mono />
+              <DetailRow label="Total queries" value={profile.total_queries as number} mono />
+              <DetailRow
+                label={profile.unique_domains !== undefined ? "Unique domains" : "Unique clients"}
+                value={
+                  (profile.unique_domains !== undefined
+                    ? profile.unique_domains
+                    : profile.unique_clients) as number
+                }
+                mono
+              />
+              <DetailRow label="Benign queries" value={profile.benign_queries as number} mono />
+              <DetailRow label="Malicious queries" value={profile.malicious_queries as number} mono />
+              <DetailRow
+                label="Review needed queries"
+                value={profile.review_needed_queries as number}
+                mono
+              />
+              <DetailRow label="Unknown queries" value={profile.unknown_queries as number} mono />
+              <DetailRow label="Last label" value={profile.last_label as string} />
+              <DetailRow label="Last TI source" value={profile.last_ti_source as string} mono />
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

@@ -1,7 +1,8 @@
 """CSV safety and filter parity."""
 
+import csv
 import re
-from io import BytesIO
+from io import BytesIO, StringIO
 
 from reporting.exporters import (
     build_xlsx,
@@ -37,6 +38,89 @@ def test_entity_csv_sanitizes_formula_cells():
     assert "'=evil.example" in csv_text
     assert "'@feed" in csv_text
     assert csv_text.startswith("section,field,value,source,checked_at")
+
+
+def _csv_rows(snapshot, report=None):
+    reader = csv.DictReader(StringIO("".join(snapshot_csv_chunks(snapshot, report))))
+    return list(reader)
+
+
+def test_entity_csv_includes_evidence_sections():
+    snapshot = {
+        **SNAPSHOT,
+        "dossier": {
+            **SNAPSHOT["dossier"],
+            "registration": {
+                "status": "AVAILABLE",
+                "source": "RDAP",
+                "registrar": "=Evil Registrar",
+                "created_at": "2020-01-01T00:00:00Z",
+                "expires_at": "2030-01-01T00:00:00Z",
+                "nameservers": ["ns1.example.com", "ns2.example.com"],
+            },
+            "dns_records": {
+                "status": "AVAILABLE",
+                "provider": "DNS Resolver",
+                "a": ["192.0.2.10"],
+                "mx": [{"priority": 10, "exchange": "mail.example.com"}],
+            },
+            "threat_intel": {
+                "reputation": {
+                    "status": "malicious",
+                    "source": "@feed",
+                    "confidence": 0.92,
+                    "last_verified_at": "2026-11-09T00:00:00Z",
+                },
+                "daily_review": {
+                    "status": "review_needed",
+                    "review_count": 3,
+                    "next_check_at": "2026-11-12T00:00:00Z",
+                },
+                "reviewed_clean": {
+                    "status": "clean",
+                    "verified_at": "2026-11-08T00:00:00Z",
+                },
+            },
+        },
+    }
+    report = {
+        "title": "=Report title",
+        "status": "reviewed",
+        "verdict": "Malicious",
+        "conclusion": "=cmd|' /C calc'!A0",
+        "reviewed_by": 7,
+        "reviewed_at": "2026-11-11T00:00:00Z",
+    }
+
+    rows = _csv_rows(snapshot, report)
+    by_key = {(row["section"], row["field"]): row["value"] for row in rows}
+
+    assert by_key[("registration", "registrar")] == "'=Evil Registrar"
+    assert by_key[("registration", "created")] == "2020-01-01T00:00:00Z"
+    assert by_key[("registration", "expires")] == "2030-01-01T00:00:00Z"
+    assert by_key[("registration", "nameservers")] == "ns1.example.com, ns2.example.com"
+
+    assert by_key[("dns", "A")] == "192.0.2.10"
+    assert by_key[("dns", "MX")] == "10 mail.example.com"
+
+    assert by_key[("threat_intel", "reputation_status")] == "malicious"
+    assert by_key[("threat_intel", "reputation_source")] == "'@feed"
+    assert by_key[("threat_intel", "reputation_confidence")] == "0.92"
+    assert by_key[("threat_intel", "daily_review_status")] == "review_needed"
+    assert by_key[("threat_intel", "daily_review_count")] == "3"
+    assert by_key[("threat_intel", "daily_review_next_check")] == "2026-11-12T00:00:00Z"
+    assert by_key[("threat_intel", "reviewed_clean_status")] == "clean"
+
+    assert by_key[("assessment", "title")] == "'=Report title"
+    assert by_key[("assessment", "status")] == "reviewed"
+    assert by_key[("assessment", "verdict")] == "Malicious"
+    assert by_key[("assessment", "conclusion")] == "'=cmd|' /C calc'!A0"
+    assert by_key[("assessment", "reviewer")] == "7"
+
+
+def test_entity_csv_without_report_has_no_assessment_section():
+    sections = {row["section"] for row in _csv_rows(SNAPSHOT)}
+    assert "assessment" not in sections
 
 
 def test_xlsx_has_the_six_sheets_and_safe_text():

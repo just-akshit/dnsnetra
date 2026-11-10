@@ -4,6 +4,7 @@ import { SiteHeader } from "@/components/site-header"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { TimeRangeProvider } from "@/components/time-range"
 import { AuthGuard } from "@/components/auth/AuthGuard"
+import { Toaster } from "@/components/ui/sonner"
 
 export default function DashboardLayout({
   children,
@@ -33,6 +34,7 @@ export default function DashboardLayout({
           </TimeRangeProvider>
         </React.Suspense>
       </SidebarInset>
+      <Toaster />
     </SidebarProvider>
     </AuthGuard>
   )

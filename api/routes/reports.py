@@ -19,7 +19,7 @@ import logging
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 
 from api.audit import AuditAction, log_audit_event
 from api.rate_limiter import enforce_search_rate_limit
@@ -42,6 +42,8 @@ from investigation.schemas import (
 )
 from investigation.service import InvestigationService
 from labeler.intel.database import normalize_domain
+from reporting.exporters import build_xlsx, safe_filename_part, snapshot_csv_chunks
+from reporting.report_service import ReportService
 from reporting.schemas import ReportingValidationError
 from reporting.service import ReportingService
 from time_engine import (
@@ -538,6 +540,90 @@ def get_report_entity(
             entity_type="domain",
             domain_dossier=dossier,
         )
+
+
+@router.get(
+    "/entity/export",
+    summary="Export an Entity Dossier as CSV or XLSX",
+    description="One-shot export of a domain or client dossier snapshot in long-format CSV or a six-sheet workbook.",
+)
+def export_entity_report(
+    request: Request,
+    entity: str = Query(..., min_length=1, description="Domain name or client IP"),
+    entity_type: Optional[str] = Query(None, description="Optional 'domain' or 'client'"),
+    format: str = Query("csv", pattern="^(csv|xlsx)$"),
+    current_user: dict[str, Any] = Depends(require_permission("reports:export")),
+):
+    """Build an entity snapshot on demand and stream it back as an export."""
+    clean_entity = entity.strip()
+    if not clean_entity:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Entity identifier cannot be empty.",
+        )
+
+    effective = (
+        entity_type.strip().lower()
+        if entity_type and entity_type.strip()
+        else ("client" if _is_ip(clean_entity) else "domain")
+    )
+    if effective not in ("domain", "client"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="entity_type must be either 'domain' or 'client'.",
+        )
+
+    required = "domains:investigate" if effective == "domain" else "clients:investigate"
+    if not has_permission(current_user.get("role", ""), required):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied: role '{current_user.get('role')}' lacks permission '{required}'",
+        )
+
+    try:
+        snapshot = ReportService().build_snapshot(
+            kind=f"entity_{effective}", entity=clean_entity,
+            window=None, start_time=None, end_time=None, filters={},
+        )
+    except EntityNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except InvalidEntityError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    log_audit_event(
+        action=AuditAction.REPORT_EXPORTED,
+        user_id=current_user["id"],
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        target_type="export",
+        target_id=clean_entity,
+        metadata={"format": format, "one_shot": True, "entity_type": effective},
+    )
+
+    filename = f"dnsnetra_{effective}_{safe_filename_part(clean_entity)}.{format}"
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Cache-Control": "no-store",
+    }
+    if format == "xlsx":
+        return Response(
+            content=build_xlsx(snapshot),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers=headers,
+        )
+    return StreamingResponse(
+        snapshot_csv_chunks(snapshot),
+        media_type="text/csv",
+        headers=headers,
+    )
+
+
+def _is_ip(value: str) -> bool:
+    try:
+        ipaddress.ip_address(value)
+        return True
+    except ValueError:
+        return False
 
 
 @router.get(

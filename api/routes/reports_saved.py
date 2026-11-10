@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import Response, StreamingResponse
 
 from api.audit import AuditAction, log_audit_event
 from api.rbac import require_permission
@@ -13,6 +14,7 @@ from api.schemas.reports_saved import (
     SavedReportDetail,
 )
 from investigation.schemas import InvalidEntityError
+from reporting.exporters import build_xlsx, safe_filename_part, snapshot_csv_chunks
 from reporting.report_schemas import ReportStatus
 from reporting.report_service import ReportService
 from reporting.schemas import ReportingValidationError
@@ -133,3 +135,35 @@ def archive_report(
         raise HTTPException(status_code=404, detail="Report not found.")
     _audit(AuditAction.REPORT_ARCHIVED, request, current_user, public_id)
     return None
+
+
+@router.post("/{public_id}/export")
+def export_report(
+    public_id: str,
+    request: Request,
+    format: str = Query("csv", pattern="^(csv|xlsx)$"),
+    current_user: dict[str, Any] = Depends(require_permission("reports:export")),
+):
+    """Export a saved report's snapshot as CSV or XLSX."""
+    report = ReportService().get_report(public_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found.")
+
+    _audit(AuditAction.REPORT_EXPORTED, request, current_user, public_id, format=format)
+
+    filename = f"dnsnetra_{safe_filename_part(public_id)}.{format}"
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Cache-Control": "no-store",
+    }
+    if format == "xlsx":
+        return Response(
+            content=build_xlsx(report.snapshot),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers=headers,
+        )
+    return StreamingResponse(
+        snapshot_csv_chunks(report.snapshot),
+        media_type="text/csv",
+        headers=headers,
+    )

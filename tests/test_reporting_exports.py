@@ -1,7 +1,52 @@
 """CSV safety and filter parity."""
 
-from reporting.exporters import sanitize_csv_cell
+from io import BytesIO
+
+from reporting.exporters import (
+    build_xlsx,
+    sanitize_csv_cell,
+    snapshot_csv_chunks,
+)
 from reporting.repository import ReportingRepository, like_pattern
+
+SNAPSHOT = {
+    "schema_version": 1,
+    "kind": "entity_domain",
+    "entity": {"type": "domain", "value": "=evil.example"},
+    "window": {"start": None, "end": None, "label": "all time"},
+    "observed_in_network": False,
+    "dossier": {
+        "domain": "=evil.example",
+        "observed_in_network": False,
+        "profile": {"total_queries": 7, "unique_clients": 2},
+        "recent_queries": [
+            {"timestamp": "2026-11-10T00:00:00Z", "client_ip": "10.0.0.5",
+             "domain": "=evil.example", "query_type": "A",
+             "final_label": "Malicious", "ti_source": "@feed"}
+        ],
+        "live_intel": {"checked_at": "2026-11-10T00:00:00Z", "verdict": {"state": "malicious"}},
+    },
+    "provenance": {"sources": ["domain_query_history"]},
+}
+
+
+def test_entity_csv_sanitizes_formula_cells():
+    csv_text = "".join(snapshot_csv_chunks(SNAPSHOT))
+    assert "'=evil.example" in csv_text
+    assert "'@feed" in csv_text
+    assert csv_text.startswith("section,field,value,source,checked_at")
+
+
+def test_xlsx_has_the_six_sheets_and_safe_text():
+    from openpyxl import load_workbook
+
+    data = build_xlsx(SNAPSHOT)
+    workbook = load_workbook(BytesIO(data))
+    assert workbook.sheetnames == [
+        "Summary", "Timeline", "Relationships", "Queries", "Intelligence", "Assessment"
+    ]
+    values = [cell.value for row in workbook["Queries"].iter_rows() for cell in row]
+    assert "'=evil.example" in values
 
 
 def test_formula_cells_are_neutralized():

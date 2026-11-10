@@ -58,6 +58,124 @@ describe("cases UI", () => {
     expect(await screen.findByText("Investigate beacon.example")).toBeInTheDocument()
   })
 
+  it("requests the unassigned queue and applies status and priority filters", async () => {
+    const list = vi.spyOn(dnsnetraApi, "listCases").mockResolvedValue(listOf(caseSummary))
+    render(<CasesPage />)
+    await screen.findByText("Investigate beacon.example")
+    expect(list).toHaveBeenCalledWith({ limit: 50, assigned_to_me: true })
+
+    fireEvent.click(screen.getByRole("tab", { name: "Unassigned" }))
+    await waitFor(() =>
+      expect(list).toHaveBeenLastCalledWith({ limit: 50, unassigned: true })
+    )
+
+    fireEvent.change(screen.getByLabelText("Status filter"), {
+      target: { value: "open" },
+    })
+    await waitFor(() =>
+      expect(list).toHaveBeenLastCalledWith({
+        limit: 50,
+        unassigned: true,
+        status: "open",
+      })
+    )
+
+    fireEvent.change(screen.getByLabelText("Priority filter"), {
+      target: { value: "high" },
+    })
+    await waitFor(() =>
+      expect(list).toHaveBeenLastCalledWith({
+        limit: 50,
+        unassigned: true,
+        status: "open",
+        priority: "high",
+      })
+    )
+  })
+
+  it("creates a case from the inline form and refreshes the queue", async () => {
+    const list = vi.spyOn(dnsnetraApi, "listCases").mockResolvedValue(listOf(caseSummary))
+    const create = vi.spyOn(dnsnetraApi, "createCase").mockResolvedValue(
+      caseDetail({ public_id: "CASE-2026-000002", title: "Investigate new.example" })
+    )
+
+    render(<CasesPage />)
+    await screen.findByText("Investigate beacon.example")
+    fireEvent.click(screen.getByRole("button", { name: "Create case" }))
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "Investigate new.example" },
+    })
+    fireEvent.change(screen.getByLabelText("Entity type"), {
+      target: { value: "domain" },
+    })
+    fireEvent.change(screen.getByLabelText("Entity value"), {
+      target: { value: "new.example" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Create" }))
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith({
+        title: "Investigate new.example",
+        priority: "medium",
+        entity_type: "domain",
+        entity_value: "new.example",
+      })
+    )
+    expect(list.mock.calls.length).toBeGreaterThan(1)
+  })
+
+  it("self-assigns an unassigned case", async () => {
+    vi.spyOn(dnsnetraApi, "getCase").mockResolvedValue(caseDetail())
+    const update = vi.spyOn(dnsnetraApi, "updateCase").mockResolvedValue(
+      caseDetail({ assigned_to: 1 })
+    )
+
+    render(<CaseDetailPage />)
+    expect(await screen.findByText("Unassigned")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Assign to me" }))
+
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith("CASE-2026-000001", { assigned_to: 1 })
+    )
+    expect(await screen.findByText("Assigned to you")).toBeInTheDocument()
+  })
+
+  it("links a report by public id", async () => {
+    vi.spyOn(dnsnetraApi, "getCase").mockResolvedValue(caseDetail())
+    const link = vi.spyOn(dnsnetraApi, "linkCaseReport").mockResolvedValue(
+      caseDetail({ reports: ["RPT-2026-000002"] })
+    )
+
+    render(<CaseDetailPage />)
+    await screen.findByText("Investigate beacon.example")
+    fireEvent.change(screen.getByLabelText("Report ID"), {
+      target: { value: "RPT-2026-000002" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Link report" }))
+
+    await waitFor(() =>
+      expect(link).toHaveBeenCalledWith("CASE-2026-000001", "RPT-2026-000002")
+    )
+    expect(
+      await screen.findByRole("link", { name: "RPT-2026-000002" })
+    ).toHaveAttribute("href", "/reports/saved/RPT-2026-000002")
+  })
+
+  it("moves a case to awaiting_info", async () => {
+    vi.spyOn(dnsnetraApi, "getCase").mockResolvedValue(
+      caseDetail({ status: "investigating" })
+    )
+    const update = vi.spyOn(dnsnetraApi, "updateCase").mockResolvedValue(
+      caseDetail({ status: "awaiting_info" })
+    )
+
+    render(<CaseDetailPage />)
+    fireEvent.click(await screen.findByRole("button", { name: "Request info" }))
+    expect(update).toHaveBeenCalledWith("CASE-2026-000001", {
+      status: "awaiting_info",
+    })
+  })
+
   it("moves a case to triaged", async () => {
     vi.spyOn(dnsnetraApi, "getCase").mockResolvedValue(caseDetail())
     const update = vi.spyOn(dnsnetraApi, "updateCase").mockResolvedValue(

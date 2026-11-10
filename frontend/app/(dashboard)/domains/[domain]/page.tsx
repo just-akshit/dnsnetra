@@ -38,6 +38,7 @@ export default function DomainProfilePage() {
   const [error, setError] = React.useState<string | null>(null)
   const [notFound, setNotFound] = React.useState(false)
   const [creating, setCreating] = React.useState(false)
+  const [creatingCase, setCreatingCase] = React.useState(false)
 
   const loadData = React.useCallback(async (forceRefresh = false) => {
     if (!domain) return
@@ -199,6 +200,36 @@ export default function DomainProfilePage() {
             }}
           >
             Create report
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={creatingCase}
+            aria-busy={creatingCase}
+            onClick={async () => {
+              if (creatingCase) return
+              setCreatingCase(true)
+              try {
+                const created = await dnsnetraApi.createCase({
+                  title: `Investigate ${domain}`,
+                  priority: "medium",
+                  entity_type: "domain",
+                  entity_value: domain,
+                })
+                toast.success(`Case ${created.public_id} opened.`, {
+                  action: {
+                    label: "Open",
+                    onClick: () => router.push(`/cases/${created.public_id}`),
+                  },
+                })
+              } catch {
+                toast.error("Could not open a case.")
+              } finally {
+                setCreatingCase(false)
+              }
+            }}
+          >
+            Open case
           </Button>
           <Button
             variant="outline"

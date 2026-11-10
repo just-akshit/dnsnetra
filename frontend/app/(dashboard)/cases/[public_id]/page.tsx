@@ -21,10 +21,26 @@ interface Transition {
 }
 
 const NEXT: Record<string, Transition[]> = {
-  open: [{ label: "Start triage", status: "triaged" }],
-  triaged: [{ label: "Start investigation", status: "investigating" }],
-  investigating: [{ label: "Resolve", status: "resolved" }],
-  awaiting_info: [{ label: "Resume", status: "investigating" }],
+  open: [
+    { label: "Start triage", status: "triaged" },
+    { label: "Close", status: "closed", manageOnly: true },
+  ],
+  triaged: [
+    { label: "Start investigation", status: "investigating" },
+    { label: "Request info", status: "awaiting_info" },
+    { label: "Resolve", status: "resolved" },
+    { label: "Close", status: "closed", manageOnly: true },
+  ],
+  investigating: [
+    { label: "Request info", status: "awaiting_info" },
+    { label: "Resolve", status: "resolved" },
+    { label: "Close", status: "closed", manageOnly: true },
+  ],
+  awaiting_info: [
+    { label: "Resume", status: "investigating" },
+    { label: "Resolve", status: "resolved" },
+    { label: "Close", status: "closed", manageOnly: true },
+  ],
   resolved: [
     { label: "Reopen", status: "investigating" },
     { label: "Close", status: "closed", manageOnly: true },
@@ -74,6 +90,7 @@ export default function CaseDetailPage() {
   const [item, setItem] = React.useState<CaseDetail | null>(null)
   const [comment, setComment] = React.useState("")
   const [resolution, setResolution] = React.useState("true_positive")
+  const [reportId, setReportId] = React.useState("")
   const [pending, setPending] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
@@ -129,6 +146,33 @@ export default function CaseDetailPage() {
     }
   }
 
+  async function selfAssign() {
+    if (pending || me?.id == null) return
+    setPending("assign")
+    try {
+      setItem(await dnsnetraApi.updateCase(publicId, { assigned_to: me.id }))
+      toast.success("Case assigned to you.")
+    } catch (err) {
+      toast.error(errorMessage(err, "Assignment failed."))
+    } finally {
+      setPending(null)
+    }
+  }
+
+  async function linkReport() {
+    if (!reportId.trim() || pending) return
+    setPending("report")
+    try {
+      setItem(await dnsnetraApi.linkCaseReport(publicId, reportId.trim()))
+      setReportId("")
+      toast.success("Report linked.")
+    } catch (err) {
+      toast.error(errorMessage(err, "Could not link report."))
+    } finally {
+      setPending(null)
+    }
+  }
+
   if (!item) {
     if (loading) {
       return <p className="p-6 text-sm text-muted-foreground">Loading case…</p>
@@ -149,6 +193,17 @@ export default function CaseDetailPage() {
   const canResolve = actions.some((action) => action.status === "resolved")
   const canComment =
     me?.role === "ADMIN" || me?.role === "SUPER_ADMIN" || me?.role === "ANALYST"
+  const canWrite = canComment
+  const canManage = me?.role === "ADMIN" || me?.role === "SUPER_ADMIN"
+  const isMine =
+    me?.id != null && item.assigned_to != null && String(item.assigned_to) === String(me.id)
+  const canSelfAssign =
+    canWrite && me?.id != null && !isMine && (item.assigned_to == null || canManage)
+  const assignee = isMine
+    ? "Assigned to you"
+    : item.assigned_to != null
+      ? `Assigned to user #${item.assigned_to}`
+      : "Unassigned"
 
   return (
     <div className="flex flex-col gap-4 p-4 lg:p-6">
@@ -160,13 +215,20 @@ export default function CaseDetailPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">{assignee}</span>
           <Badge variant="outline">{item.priority}</Badge>
           <Badge variant="outline">{item.status}</Badge>
         </div>
       </div>
 
-      {actions.length > 0 && (
+      {(actions.length > 0 || canSelfAssign) && (
         <div className="flex flex-wrap items-center gap-2">
+          {canSelfAssign && (
+            <Button size="sm" variant="outline" onClick={() => void selfAssign()}
+                    disabled={pending !== null}>
+              {pending === "assign" ? "Working…" : "Assign to me"}
+            </Button>
+          )}
           {actions.map((action) => (
             <Button key={action.status} size="sm" onClick={() => void move(action.status)}
                     disabled={pending !== null}>
@@ -219,7 +281,7 @@ export default function CaseDetailPage() {
 
       <Card>
         <CardHeader><CardTitle className="text-sm">Linked reports</CardTitle></CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-col gap-3">
           {item.reports.length === 0 ? (
             <p className="text-sm text-muted-foreground">No linked reports.</p>
           ) : (
@@ -233,6 +295,16 @@ export default function CaseDetailPage() {
                 </li>
               ))}
             </ul>
+          )}
+          {canWrite && (
+            <div className="flex gap-2">
+              <Input value={reportId} onChange={(e) => setReportId(e.target.value)}
+                     placeholder="RPT-2026-000001" aria-label="Report ID" disabled={pending !== null} />
+              <Button size="sm" onClick={() => void linkReport()}
+                      disabled={pending !== null || !reportId.trim()}>
+                {pending === "report" ? "Working…" : "Link report"}
+              </Button>
+            </div>
           )}
         </CardContent>
       </Card>

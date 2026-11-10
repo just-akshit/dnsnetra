@@ -790,6 +790,14 @@ export const dnsnetraApi = {
     return apiFetch(`/api/v1/cases/${encodeURIComponent(publicId)}/comments`, {}, { method: "POST", body: { body } })
   },
 
+  /** Link an existing saved report to a case */
+  async linkCaseReport(publicId: string, reportPublicId: string): Promise<import("@/lib/reporting/types").CaseDetail> {
+    return apiFetch(`/api/v1/cases/${encodeURIComponent(publicId)}/reports`, {}, {
+      method: "POST",
+      body: { report_public_id: reportPublicId },
+    })
+  },
+
   /** Get complete unified dashboard data */
   async getDashboard(
     params: {

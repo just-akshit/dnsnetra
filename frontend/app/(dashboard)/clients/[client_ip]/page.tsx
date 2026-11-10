@@ -38,6 +38,7 @@ export default function ClientProfilePage() {
   const [error, setError] = React.useState<string | null>(null)
   const [notFound, setNotFound] = React.useState(false)
   const [creating, setCreating] = React.useState(false)
+  const [creatingCase, setCreatingCase] = React.useState(false)
 
   const loadData = React.useCallback(async (forceRefresh = false) => {
     if (!clientIp) return
@@ -203,6 +204,36 @@ export default function ClientProfilePage() {
             }}
           >
             Create report
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={creatingCase}
+            aria-busy={creatingCase}
+            onClick={async () => {
+              if (creatingCase) return
+              setCreatingCase(true)
+              try {
+                const created = await dnsnetraApi.createCase({
+                  title: `Investigate ${clientIp}`,
+                  priority: "medium",
+                  entity_type: "client",
+                  entity_value: clientIp,
+                })
+                toast.success(`Case ${created.public_id} opened.`, {
+                  action: {
+                    label: "Open",
+                    onClick: () => router.push(`/cases/${created.public_id}`),
+                  },
+                })
+              } catch {
+                toast.error("Could not open a case.")
+              } finally {
+                setCreatingCase(false)
+              }
+            }}
+          >
+            Open case
           </Button>
           <Button
             variant="outline"

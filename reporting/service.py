@@ -140,11 +140,9 @@ class ReportingService:
                 malicious_query_percentage=0.0,
             )
 
-        # Bounded query bounded by observable_end
-        if tr.is_hour_aligned:
-            raw = self.repository.get_aligned_window_summary(tr.start, tr.observable_end)
-        else:
-            raw = self.repository.get_raw_window_summary(tr.start, tr.observable_end)
+        # Bounded summaries use raw telemetry so they always reconcile with the
+        # timeseries endpoint. Rollups remain for all-time dashboard KPIs.
+        raw = self.repository.get_raw_window_summary(tr.start, tr.observable_end)
 
         total_q = raw["total_queries"]
         mal_q = raw["malicious_queries"]

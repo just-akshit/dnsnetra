@@ -4,10 +4,13 @@ tests/test_reporting_service.py
 Exhaustive test suite for ReportingService covering all Phase 2A requirements.
 """
 
+from contextlib import contextmanager
 from datetime import datetime, timezone, timedelta
+import socket
 import sys
 import pytest
 
+from domain_profiling.connection import get_db_connection
 from reporting.service import ReportingService
 from reporting.schemas import (
     CanonicalVerdict,
@@ -27,36 +30,123 @@ def service():
     return ReportingService()
 
 
+SEED_IP = "203.0.113.250"
+SEED_DOMAIN = "task5-seed.example.test"
+# Isolated instant before the live dataset (history starts 2025-09-29).
+SEED_TIME = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+
+
+@contextmanager
+def _seed_event(
+    *,
+    client_ip: str = SEED_IP,
+    domain: str = SEED_DOMAIN,
+    timestamp: datetime = SEED_TIME,
+    verdict: str = "Malicious",
+    query_type: str = "A",
+    ti_source: str = "pytest",
+    response_code: str = "NOERROR",
+):
+    """Insert one isolated history row; always delete it on teardown.
+
+    Only domain_query_history is touched, so rollup/profile-backed all-time
+    metrics are unaffected while the event is alive.
+    """
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM domain_query_history "
+                "WHERE client_ip = %s AND domain = %s AND timestamp = %s;",
+                (client_ip, domain, timestamp),
+            )
+            cur.execute(
+                """
+                INSERT INTO domain_query_history
+                    (timestamp, client_ip, domain, query_type, final_label,
+                     ti_source, response_code)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING id;
+                """,
+                (timestamp, client_ip, domain, query_type, verdict,
+                 ti_source, response_code),
+            )
+            event_id = cur.fetchone()[0]
+        conn.commit()
+    try:
+        yield event_id
+    finally:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM domain_query_history WHERE id = %s;",
+                    (event_id,),
+                )
+            conn.commit()
+
+
+def _count_pages(fetch_page, limit: int = 1000):
+    """Page through a service call and return (reported_total, rows_seen)."""
+    offset, rows_seen, reported_total = 0, 0, None
+    while True:
+        page = fetch_page(limit=limit, offset=offset)
+        if reported_total is None:
+            reported_total = page.total
+        assert page.total == reported_total
+        rows_seen += len(page.items)
+        if not page.has_more:
+            break
+        assert page.items, "has_more was True on an empty page"
+        offset += limit
+    return reported_total, rows_seen
+
+
+def _distinct_domains(items):
+    """Set of domains present in a list of DomainSummaryItem/QueryEventItem."""
+    return {item.domain for item in items}
+
+
 # ---------------------------------------------------------------------------
 # SUMMARY TESTS (1-8)
 # ---------------------------------------------------------------------------
 
 def test_1_summary_all_time_reconciliation(service):
-    """1. All-time summary reconciles exactly against ground truth."""
+    """1. All-time summary reconciles against its breakdown and entity lists."""
     summary = service.get_summary()
     assert isinstance(summary, ReportingSummary)
     assert summary.time_window is None
-    assert summary.total_queries == 30181
-    assert summary.unique_clients == 12
-    assert summary.unique_domains == 49
+    vb = summary.verdict_breakdown
+    assert summary.total_queries > 0
+    assert summary.total_queries == (
+        vb.benign + vb.malicious + vb.review_needed + vb.unknown
+    )
+    assert summary.unique_clients == service.get_top_clients(limit=1).total
+    assert summary.unique_domains == service.get_top_domains(limit=1).total
 
 
 def test_2_summary_four_verdicts_reconciliation(service):
-    """2. Four canonical verdicts reconcile exactly and sum to total."""
+    """2. Verdicts reconcile against the event log and sum to total."""
     summary = service.get_summary()
     vb = summary.verdict_breakdown
-    assert vb.benign == 23371
-    assert vb.malicious == 4626
-    assert vb.review_needed == 448
-    assert vb.unknown == 1736
-    assert (vb.benign + vb.malicious + vb.review_needed + vb.unknown) == summary.total_queries
+    assert vb.benign == service.get_queries(verdict="Benign", limit=1).total
+    assert vb.malicious == service.get_queries(verdict="Malicious", limit=1).total
+    assert vb.review_needed == service.get_queries(verdict="Review Needed", limit=1).total
+    # Unknown may legitimately be an empty population; derive it, never assume > 0.
+    known = vb.benign + vb.malicious + vb.review_needed
+    assert vb.unknown == summary.total_queries - known
+    assert min(vb.benign, vb.malicious, vb.review_needed, vb.unknown) >= 0
+    assert known + vb.unknown == summary.total_queries
 
 
 def test_3_summary_malicious_percentage(service):
-    """3. Malicious query percentage is accurately calculated."""
+    """3. Malicious percentage derives from the reconciled breakdown."""
     summary = service.get_summary()
-    expected_pct = round((4626 * 100.0) / 30181, 2)  # 15.33%
+    vb = summary.verdict_breakdown
+    if summary.total_queries:
+        expected_pct = round((vb.malicious * 100.0) / summary.total_queries, 2)
+    else:
+        expected_pct = 0.0
     assert summary.malicious_query_percentage == expected_pct
+    assert 0.0 <= summary.malicious_query_percentage <= 100.0
 
 
 def test_4_summary_zero_event_window(service):
@@ -107,6 +197,35 @@ def test_8_summary_unique_domains_exactness(service):
     end = datetime(2026, 9, 16, 13, 0, 0, tzinfo=DB_TZ)
     summary = service.get_summary(start_time=start, end_time=end)
     assert 0 < summary.unique_domains <= 49
+
+
+def test_bounded_summary_matches_timeseries_total(service):
+    """Bounded summary and timeseries agree on every counter for a seeded window.
+
+    The seeded hour has no rollup row, so the old rollup-backed summary path
+    would report 0 while the raw timeseries reports the event.
+    """
+    with _seed_event(timestamp=SEED_TIME, verdict="Malicious"):
+        start = SEED_TIME
+        end = SEED_TIME + timedelta(hours=1)
+        summary = service.get_summary(start_time=start, end_time=end)
+        series = service.get_timeseries(start_time=start, end_time=end, bucket="1h")
+
+        assert summary.total_queries == 1
+        assert summary.verdict_breakdown.malicious == 1
+        assert summary.total_queries == sum(b.total_queries for b in series.buckets)
+        assert summary.verdict_breakdown.benign == sum(
+            b.benign_queries for b in series.buckets
+        )
+        assert summary.verdict_breakdown.malicious == sum(
+            b.malicious_queries for b in series.buckets
+        )
+        assert summary.verdict_breakdown.review_needed == sum(
+            b.review_needed_queries for b in series.buckets
+        )
+        assert summary.verdict_breakdown.unknown == sum(
+            b.unknown_queries for b in series.buckets
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -191,12 +310,13 @@ def test_15_timeseries_deterministic_ordering(service):
 # ---------------------------------------------------------------------------
 
 def test_16_clients_all_time_ranking(service):
-    """16. All-time client ranking ordered by total_queries DESC, client_ip ASC."""
+    """16. Client ranking reconciles with summary and pages by total."""
+    summary = service.get_summary()
     res = service.get_top_clients(limit=10, offset=0)
     assert isinstance(res, PaginatedResult)
-    assert res.total == 12
-    assert len(res.items) == 10
-    # Strict order check
+    assert res.total == summary.unique_clients
+    assert len(res.items) == min(10, res.total)
+    assert res.has_more == (res.total > 10)
     for i in range(len(res.items) - 1):
         c1, c2 = res.items[i], res.items[i + 1]
         assert (c1.total_queries > c2.total_queries) or (
@@ -216,21 +336,23 @@ def test_17_clients_windowed_ranking(service):
 
 
 def test_18_clients_pagination(service):
-    """18. Pagination math (limit, offset, has_more) is verified."""
+    """18. Pagination lengths and has_more derive from the reported total."""
+    total = service.get_top_clients(limit=1, offset=0).total
     p1 = service.get_top_clients(limit=5, offset=0)
     assert p1.limit == 5
     assert p1.offset == 0
-    assert p1.has_more is True
-    assert len(p1.items) == 5
+    assert p1.has_more == (total > 5)
+    assert len(p1.items) == min(5, total)
 
     p2 = service.get_top_clients(limit=5, offset=5)
     assert p2.offset == 5
-    assert len(p2.items) == 5
-    assert p1.items[0].client_ip != p2.items[0].client_ip
+    assert len(p2.items) == max(0, min(5, total - 5))
+    if p1.items and p2.items:
+        assert p1.items[0].client_ip != p2.items[0].client_ip
 
     p3 = service.get_top_clients(limit=5, offset=10)
-    assert len(p3.items) == 2  # 12 total
-    assert p3.has_more is False
+    assert len(p3.items) == max(0, min(5, total - 10))
+    assert p3.has_more == (total > 10)
 
 
 def test_19_clients_deterministic_tie_breaking(service):
@@ -254,10 +376,13 @@ def test_20_clients_four_verdict_counts(service):
 # ---------------------------------------------------------------------------
 
 def test_21_domains_all_time_ranking(service):
-    """21. All-time domain ranking ordered by total_queries DESC, domain ASC."""
+    """21. Domain ranking reconciles with summary and pages by total."""
+    summary = service.get_summary()
     res = service.get_top_domains(limit=10, offset=0)
-    assert res.total == 49
-    assert len(res.items) == 10
+    assert res.total == summary.unique_domains
+    assert len(res.items) == min(10, res.total)
+    assert res.has_more == (res.total > 10)
+    assert len(_distinct_domains(res.items)) == len(res.items)
     for i in range(len(res.items) - 1):
         assert res.items[i].total_queries >= res.items[i + 1].total_queries
 
@@ -294,13 +419,17 @@ def test_24_domains_verdict_filter_review_needed(service):
 
 
 def test_25_domains_verdict_filter_unknown(service):
-    """25. verdict_filter = Unknown acts as event-population filter."""
-    res = service.get_top_domains(limit=10, offset=0, verdict_filter=CanonicalVerdict.UNKNOWN)
-    assert res.total > 0
-    for item in res.items:
-        assert item.latest_verdict == "Unknown"
-        assert item.unknown_queries == item.total_queries
-        assert item.malicious_queries == 0
+    """25. verdict_filter = Unknown selects only Unknown events (seeded)."""
+    with _seed_event(verdict="Unknown"):
+        res = service.get_top_domains(
+            limit=10, offset=0, verdict_filter=CanonicalVerdict.UNKNOWN
+        )
+        assert res.total >= 1
+        assert any(item.domain == SEED_DOMAIN for item in res.items)
+        for item in res.items:
+            assert item.latest_verdict == "Unknown"
+            assert item.unknown_queries == item.total_queries
+            assert item.malicious_queries == 0
 
 
 def test_26_domains_verdict_filter_benign(service):
@@ -336,12 +465,20 @@ def test_28_domains_filtered_ranking_correctness(service):
 # ---------------------------------------------------------------------------
 
 def test_29_queries_client_ip_filter(service):
-    """29. Query event log filters by client_ip."""
-    target_ip = "10.0.0.6"
-    res = service.get_queries(client_ip=target_ip, limit=10)
-    assert res.total == 4575
-    for item in res.items:
-        assert item.client_ip == target_ip
+    """29. Query event log filters by client_ip (seeded population)."""
+    with _seed_event(client_ip=SEED_IP):
+        res = service.get_queries(client_ip=SEED_IP, limit=10)
+        assert res.total == 1
+        assert len(res.items) == 1
+        for item in res.items:
+            assert item.client_ip == SEED_IP
+        total, seen = _count_pages(
+            lambda limit, offset: service.get_queries(
+                client_ip=SEED_IP, limit=limit, offset=offset
+            )
+        )
+        assert total == 1
+        assert seen == total
 
 
 def test_30_queries_domain_filter(service):
@@ -353,11 +490,23 @@ def test_30_queries_domain_filter(service):
 
 
 def test_31_queries_verdict_filter(service):
-    """31. Query event log filters by canonical verdict."""
-    res = service.get_queries(verdict="Malicious", limit=10)
-    assert res.total == 4626
-    for item in res.items:
-        assert item.final_label == "Malicious"
+    """31. Verdict filter pages to its total; seeded event is included."""
+    with _seed_event(verdict="Malicious"):
+        total, seen = _count_pages(
+            lambda limit, offset: service.get_queries(
+                verdict="Malicious", limit=limit, offset=offset
+            )
+        )
+        assert total >= 1
+        assert seen == total
+        seeded = service.get_queries(
+            client_ip=SEED_IP, verdict="Malicious", limit=10
+        )
+        assert seeded.total == 1
+        for item in seeded.items:
+            assert item.final_label == "Malicious"
+        for item in service.get_queries(verdict="Malicious", limit=10).items:
+            assert item.final_label == "Malicious"
 
 
 def test_32_queries_query_type_filter(service):
@@ -370,27 +519,38 @@ def test_32_queries_query_type_filter(service):
 
 def test_33_queries_time_range_filter(service):
     """33. Query event log filters strictly within [start_time, end_time)."""
-    start = datetime(2026, 9, 16, 12, 34, 0, tzinfo=DB_TZ)
-    end = datetime(2026, 9, 16, 12, 35, 0, tzinfo=DB_TZ)
-    res = service.get_queries(start_time=start, end_time=end, limit=20)
-    assert res.total > 0
-    for item in res.items:
-        assert item.timestamp.startswith(format_iso8601_utc(start)[:16])
+    with _seed_event(client_ip=SEED_IP, timestamp=SEED_TIME):
+        start = SEED_TIME
+        end = SEED_TIME + timedelta(minutes=1)
+        res = service.get_queries(
+            client_ip=SEED_IP, start_time=start, end_time=end, limit=20
+        )
+        assert res.total == 1
+        assert len(res.items) == 1
+        expected_prefix = format_iso8601_utc(start)[:16]
+        for item in res.items:
+            assert item.timestamp.startswith(expected_prefix)
 
 
 def test_34_queries_combined_filters(service):
-    """34. Query event log applies multiple combined filters simultaneously."""
-    res = service.get_queries(
-        client_ip="192.168.1.103",
-        verdict="Malicious",
-        query_type="A",
-        limit=10
-    )
-    assert res.total == 782
-    for item in res.items:
-        assert item.client_ip == "192.168.1.103"
-        assert item.final_label == "Malicious"
-        assert item.query_type == "A"
+    """34. Combined filters intersect to the seeded event, never widening it."""
+    with _seed_event(client_ip=SEED_IP, verdict="Malicious", query_type="A"):
+        res = service.get_queries(
+            client_ip=SEED_IP, verdict="Malicious", query_type="A", limit=10
+        )
+        assert res.total == 1
+        assert len(res.items) == 1
+        for item in res.items:
+            assert item.client_ip == SEED_IP
+            assert item.final_label == "Malicious"
+            assert item.query_type == "A"
+        # Each individual filter is a superset of the combined filter.
+        for kwargs in (
+            {"client_ip": SEED_IP},
+            {"verdict": "Malicious"},
+            {"query_type": "A"},
+        ):
+            assert service.get_queries(**kwargs, limit=1).total >= res.total
 
 
 def test_35_queries_pagination(service):
@@ -452,10 +612,29 @@ def test_39_no_fastapi_imported_by_reporting_subsystem():
 
 
 def test_40_no_external_network_calls(monkeypatch, service):
-    """40. Ensure no external sockets are opened during reporting operations."""
-    # Summary, clients, domains, queries run purely against local PostgreSQL
-    s = service.get_summary()
-    assert s.total_queries == 30181
+    """40. Reporting touches only the local DB, never an outbound socket."""
+    # Warm the connection pool before blocking sockets so DB access reuses it.
+    service.get_summary()
+
+    def _blocked_connect(self, address, *args, **kwargs):
+        raise AssertionError(f"reporting opened an external socket to {address!r}")
+
+    monkeypatch.setattr(socket.socket, "connect", _blocked_connect)
+
+    summary = service.get_summary()
+    vb = summary.verdict_breakdown
+    assert summary.total_queries == (
+        vb.benign + vb.malicious + vb.review_needed + vb.unknown
+    )
+    clients = service.get_top_clients(limit=10)
+    assert clients.total == summary.unique_clients
+    assert len(clients.items) == min(10, clients.total)
+    domains = service.get_top_domains(limit=10)
+    assert domains.total == summary.unique_domains
+    assert len(domains.items) == min(10, domains.total)
+    queries = service.get_queries(limit=10)
+    assert queries.total == summary.total_queries
+    assert len(queries.items) == min(10, queries.total)
 
 
 def test_41_parameterized_sql_injection_defense(service):

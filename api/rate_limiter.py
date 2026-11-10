@@ -73,6 +73,27 @@ def reset_rate_limits():
         _BUCKETS.clear()
 
 
+SEARCH_MAX_REQUESTS = 60
+SEARCH_WINDOW_SECONDS = 60
+
+
+def enforce_search_rate_limit(request: Request) -> None:
+    """Throttle bar searches: one keystroke fans out to three list endpoints."""
+    client_ip = get_client_ip(request)
+    is_allowed, retry_after = check_rate_limit(
+        key=client_ip,
+        action="search",
+        max_requests=SEARCH_MAX_REQUESTS,
+        window_seconds=SEARCH_WINDOW_SECONDS,
+    )
+    if not is_allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many searches. Please retry in {retry_after} seconds.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+
 def rate_limiter(action: str, max_requests: int = 10, window_seconds: int = 60) -> Callable:
     """
     FastAPI dependency factory enforcing rate limits using secure client IP.

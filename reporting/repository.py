@@ -19,6 +19,20 @@ from .schemas import CanonicalVerdict
 
 logger = logging.getLogger(__name__)
 
+_SEARCH_MAX_LENGTH = 253
+
+
+def _like_pattern(term: str) -> str:
+    """Build a safe ILIKE pattern: escape metacharacters and cap length.
+
+    Without this, a search of ``%`` becomes ``ILIKE '%%%'`` and scans the whole
+    table on every keystroke.
+    """
+    clean = term.strip()[:_SEARCH_MAX_LENGTH]
+    for character in ("\\", "%", "_"):
+        clean = clean.replace(character, "\\" + character)
+    return f"%{clean}%"
+
 
 class ReportingRepository:
     """
@@ -238,7 +252,7 @@ class ReportingRepository:
         params: List[Any] = []
         if search and search.strip():
             where_clause = "WHERE host(client_ip) ILIKE %s"
-            params.append(f"%{search.strip()}%")
+            params.append(_like_pattern(search))
 
         with self._get_conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -294,7 +308,7 @@ class ReportingRepository:
         search_clause = ""
         if search and search.strip():
             search_clause = "AND client_ip ILIKE %s"
-            params.append(f"%{search.strip()}%")
+            params.append(_like_pattern(search))
 
         with self._get_conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -360,7 +374,7 @@ class ReportingRepository:
         params: List[Any] = []
         if search and search.strip():
             where_clause = "WHERE domain ILIKE %s"
-            params.append(f"%{search.strip()}%")
+            params.append(_like_pattern(search))
 
         with self._get_conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -418,7 +432,7 @@ class ReportingRepository:
         search_clause = ""
         if search and search.strip():
             search_clause = "AND domain ILIKE %s"
-            params.append(f"%{search.strip()}%")
+            params.append(_like_pattern(search))
 
         with self._get_conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -487,7 +501,7 @@ class ReportingRepository:
         search_clause = ""
         if search and search.strip():
             search_clause = "AND domain ILIKE %s"
-            params.append(f"%{search.strip()}%")
+            params.append(_like_pattern(search))
 
         with self._get_conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -521,7 +535,7 @@ class ReportingRepository:
                 if start_time and end_time:
                     query_params.extend([start_time, end_time])
                 if search and search.strip():
-                    query_params.append(f"%{search.strip()}%")
+                    query_params.append(_like_pattern(search))
                 query_params.extend([limit, offset])
                 cur.execute(query_sql, tuple(query_params))
                 return total, [dict(r) for r in cur.fetchall()]
@@ -567,7 +581,7 @@ class ReportingRepository:
             params.append(query_type.strip().upper())
 
         if search and search.strip():
-            term = f"%{search.strip()}%"
+            term = _like_pattern(search)
             clauses.append("(domain ILIKE %s OR client_ip ILIKE %s)")
             params.extend([term, term])
 

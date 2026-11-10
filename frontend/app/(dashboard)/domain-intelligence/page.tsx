@@ -7,9 +7,8 @@ import { DomainDetails } from "@/features/domains/domain-details"
 import { dnsnetraApi, type DomainItem } from "@/lib/data-table/api-client"
 import { useTableUrlState } from "@/lib/data-table/url-state"
 import type { EntityIdentifier } from "@/lib/data-table/types"
-import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { SearchIcon, ShieldAlertIcon, RefreshCwIcon, AlertCircleIcon } from "lucide-react"
+import { ShieldAlertIcon, RefreshCwIcon, AlertCircleIcon } from "lucide-react"
 import { toast } from "sonner"
 
 function DomainIntelligenceContent() {
@@ -27,16 +26,17 @@ function DomainIntelligenceContent() {
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
   const [activeEntity, setActiveEntity] = React.useState<EntityIdentifier | null>(null)
-  const [directSearchTerm, setDirectSearchTerm] = React.useState("")
 
   React.useEffect(() => {
     let cancelled = false
 
     async function load() {
       try {
-        const res = await dnsnetraApi.getMaliciousDomains({
+        const res = await dnsnetraApi.getDomains({
           page: pagination.pageIndex + 1,
           pageSize: pagination.pageSize,
+          verdict: "malicious",
+          search: search || undefined,
         })
         if (!cancelled) {
           setData(res.items ?? [])
@@ -58,15 +58,17 @@ function DomainIntelligenceContent() {
     return () => {
       cancelled = true
     }
-  }, [pagination.pageIndex, pagination.pageSize])
+  }, [pagination.pageIndex, pagination.pageSize, search])
 
   const handleRetry = React.useCallback(() => {
     setLoading(true)
     setError(null)
     dnsnetraApi
-      .getMaliciousDomains({
+      .getDomains({
         page: pagination.pageIndex + 1,
         pageSize: pagination.pageSize,
+        verdict: "malicious",
+        search: search || undefined,
       })
       .then((res) => {
         setData(res.items ?? [])
@@ -78,14 +80,7 @@ function DomainIntelligenceContent() {
         setError(msg)
       })
       .finally(() => setLoading(false))
-  }, [pagination.pageIndex, pagination.pageSize])
-
-  const handleDirectInvestigate = (e: React.FormEvent) => {
-    e.preventDefault()
-    const trimmed = directSearchTerm.trim().toLowerCase()
-    if (!trimmed) return
-    setActiveEntity({ type: "domain", id: trimmed })
-  }
+  }, [pagination.pageIndex, pagination.pageSize, search])
 
   const handleExport = React.useCallback(async () => {
     try {
@@ -108,7 +103,7 @@ function DomainIntelligenceContent() {
 
   return (
     <div className="flex flex-col gap-6 p-4 lg:p-6">
-      {/* Header and Lookup Banner */}
+      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
@@ -121,23 +116,6 @@ function DomainIntelligenceContent() {
             Authoritative reputation feed indicators, high-risk matches, and forensic domain profiles.
           </p>
         </div>
-
-        {/* Direct Domain Lookup */}
-        <form onSubmit={handleDirectInvestigate} className="flex items-center gap-2">
-          <div className="relative w-64 sm:w-80">
-            <SearchIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder="Investigate domain..."
-              className="pl-9 font-mono text-xs"
-              value={directSearchTerm}
-              onChange={(e) => setDirectSearchTerm(e.target.value)}
-            />
-          </div>
-          <Button type="submit" size="sm" variant="secondary">
-            Investigate
-          </Button>
-        </form>
       </div>
 
       {/* Main Threat Intel Table */}

@@ -12,8 +12,9 @@ import ipaddress
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
+from api.rate_limiter import enforce_search_rate_limit
 from api.rbac import require_permission
 from api.schemas import (
     ClientSummaryItem,
@@ -49,6 +50,7 @@ def _check_no_temporal_params(window: Optional[str], start_time: Optional[str], 
     description="Paginated list of client IP endpoints ranked by query volume with canonical pagination and optional temporal filtering.",
 )
 def list_clients(
+    request: Request,
     limit: int = Query(50, ge=1, le=1000, description="Max items to return"),
     offset: int = Query(0, ge=0, description="Offset index"),
     page: Optional[int] = Query(None, ge=1, description="Legacy page number alias"),
@@ -65,6 +67,10 @@ def list_clients(
     eff_limit = page_size if (page_size is not None and page_size >= 1) else limit
     eff_offset = ((page - 1) * eff_limit) if (page is not None and page >= 1) else offset
 
+    stripped_search = search.strip() if search and search.strip() else None
+    if stripped_search:
+        enforce_search_rate_limit(request)
+
     has_temporal = any(p is not None for p in (window, start_time, end_time))
     tr = None
     if has_temporal:
@@ -78,7 +84,7 @@ def list_clients(
         limit=eff_limit,
         offset=eff_offset,
         time_range=tr,
-        search=search.strip() if search and search.strip() else None,
+        search=stripped_search,
         sort_by=sort or "total_queries",
         sort_order=order or "desc",
     )
@@ -110,8 +116,15 @@ def get_client_detail(
 
     service = InvestigationService()
     try:
-        return service.get_client_dossier(client_ip)
+        dossier = service.get_client_dossier(client_ip)
     except EntityNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except InvalidEntityError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    if not dossier.observed_in_network:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Client IP '{dossier.client_ip}' not found in client profiles.",
+        )
+    return dossier

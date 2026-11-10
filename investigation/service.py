@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from labeler.intel.database import normalize_domain
 from reporting.repository import ReportingRepository
+from investigation.live.service import LiveIntelService
 from .repository import InvestigationRepository
 from .schemas import (
     ClientDossier,
@@ -24,7 +25,6 @@ from .schemas import (
     DomainDossier,
     DomainProfileSummary,
     DomainQueryingClientItem,
-    EntityNotFoundError,
     InvalidEntityError,
     InvariantViolationError,
     PersistedThreatIntel,
@@ -76,9 +76,11 @@ class InvestigationService:
         self,
         investigation_repository: Optional[InvestigationRepository] = None,
         reporting_repository: Optional[ReportingRepository] = None,
+        live_intel_service: Optional[LiveIntelService] = None,
     ) -> None:
         self._investigation_repo = investigation_repository or InvestigationRepository()
         self._reporting_repo = reporting_repository or ReportingRepository()
+        self._live_intel_service = live_intel_service
 
     # -----------------------------------------------------------------------
     # Input Validation Helpers
@@ -131,82 +133,89 @@ class InvestigationService:
         client_ip: str,
         limit_recent: int = DEFAULT_RECENT_QUERIES_LIMIT,
         limit_relationships: int = DEFAULT_RELATIONSHIPS_LIMIT,
+        refresh_live: bool = False,
     ) -> ClientDossier:
         """
-        Assembles 360-degree forensic dossier for an individual client IP.
+        Assembles a 360-degree dossier for an individual client IP.
+
+        Local telemetry is optional: a valid IP with no recorded activity still
+        gets a live external reputation report instead of a 404.
         """
         clean_ip = self.validate_client_ip(client_ip)
         recent_limit = max(1, min(limit_recent, MAX_RECENT_QUERIES_LIMIT))
         rel_limit = max(1, min(limit_relationships, MAX_RELATIONSHIPS_LIMIT))
 
-        # 1. Authoritative profile lookup
-        profile_raw = self._investigation_repo.get_client_profile(clean_ip)
-        if not profile_raw:
-            raise EntityNotFoundError(f"Client IP '{clean_ip}' not found in client profiles.")
-
-        # Invariant verification: sum of 4 verdicts == total_queries
-        v_sum = (
-            profile_raw["benign_queries"]
-            + profile_raw["malicious_queries"]
-            + profile_raw["review_needed_queries"]
-            + profile_raw["unknown_queries"]
-        )
-        if v_sum != profile_raw["total_queries"]:
-            raise InvariantViolationError(
-                f"Client '{clean_ip}' profile verdict invariant violated: "
-                f"sum({v_sum}) != total_queries({profile_raw['total_queries']})"
-            )
-
-        profile = ClientProfileSummary(**profile_raw)
-
-        # 2. Bounded top domain relationships
-        rel_raw = self._investigation_repo.get_client_relationships(clean_ip, limit=rel_limit)
+        profile = None
         top_domains: List[ClientRelationshipItem] = []
-        for r in rel_raw:
-            r_sum = r["benign_visits"] + r["malicious_visits"] + r["review_needed_visits"] + r["unknown_visits"]
-            if r_sum != r["visit_count"]:
-                raise InvariantViolationError(
-                    f"Relationship invariant violated for client {clean_ip} -> {r['domain']}: "
-                    f"sum({r_sum}) != visit_count({r['visit_count']})"
-                )
-            top_domains.append(ClientRelationshipItem(**r))
-
-        # 3. Bounded threat activity
-        threat_raw = self._investigation_repo.get_client_threat_activity(clean_ip, limit=rel_limit)
         threat_activity: List[ClientThreatActivityItem] = []
-        for t in threat_raw:
-            category = classify_activity_category(
-                t["benign_visits"],
-                t["malicious_visits"],
-                t["review_needed_visits"],
-                t["unknown_visits"],
-            )
-            item_data = dict(t)
-            item_data["activity_category"] = category
-            threat_activity.append(ClientThreatActivityItem(**item_data))
+        recent_queries: List[QueryEventSummary] = []
 
-        # 4. Bounded recent query events via ReportingRepository
-        _, raw_events = self._reporting_repo.get_queries(client_ip=clean_ip, limit=recent_limit)
-        recent_queries = [
-            QueryEventSummary(
-                id=ev["id"],
-                timestamp=ev["timestamp"],
-                client_ip=ev["client_ip"],
-                domain=ev["domain"],
-                query_type=ev["query_type"],
-                response_code=ev.get("response_code"),
-                final_label=ev["final_label"],
-                ti_source=ev.get("ti_source"),
+        # 1. Authoritative profile lookup (optional)
+        profile_raw = self._investigation_repo.get_client_profile(clean_ip)
+        if profile_raw:
+            # Invariant verification: sum of 4 verdicts == total_queries
+            v_sum = (
+                profile_raw["benign_queries"]
+                + profile_raw["malicious_queries"]
+                + profile_raw["review_needed_queries"]
+                + profile_raw["unknown_queries"]
             )
-            for ev in raw_events
-        ]
+            if v_sum != profile_raw["total_queries"]:
+                raise InvariantViolationError(
+                    f"Client '{clean_ip}' profile verdict invariant violated: "
+                    f"sum({v_sum}) != total_queries({profile_raw['total_queries']})"
+                )
+
+            profile = ClientProfileSummary(**profile_raw)
+
+            # 2. Bounded top domain relationships
+            rel_raw = self._investigation_repo.get_client_relationships(clean_ip, limit=rel_limit)
+            for r in rel_raw:
+                r_sum = r["benign_visits"] + r["malicious_visits"] + r["review_needed_visits"] + r["unknown_visits"]
+                if r_sum != r["visit_count"]:
+                    raise InvariantViolationError(
+                        f"Relationship invariant violated for client {clean_ip} -> {r['domain']}: "
+                        f"sum({r_sum}) != visit_count({r['visit_count']})"
+                    )
+                top_domains.append(ClientRelationshipItem(**r))
+
+            # 3. Bounded threat activity
+            threat_raw = self._investigation_repo.get_client_threat_activity(clean_ip, limit=rel_limit)
+            for t in threat_raw:
+                category = classify_activity_category(
+                    t["benign_visits"],
+                    t["malicious_visits"],
+                    t["review_needed_visits"],
+                    t["unknown_visits"],
+                )
+                item_data = dict(t)
+                item_data["activity_category"] = category
+                threat_activity.append(ClientThreatActivityItem(**item_data))
+
+            # 4. Bounded recent query events via ReportingRepository
+            _, raw_events = self._reporting_repo.get_queries(client_ip=clean_ip, limit=recent_limit)
+            recent_queries = [
+                QueryEventSummary(
+                    id=ev["id"],
+                    timestamp=ev["timestamp"],
+                    client_ip=ev["client_ip"],
+                    domain=ev["domain"],
+                    query_type=ev["query_type"],
+                    response_code=ev.get("response_code"),
+                    final_label=ev["final_label"],
+                    ti_source=ev.get("ti_source"),
+                )
+                for ev in raw_events
+            ]
 
         return ClientDossier(
             client_ip=clean_ip,
             profile=profile,
+            observed_in_network=profile is not None,
             top_domains=top_domains,
             threat_activity=threat_activity,
             recent_queries=recent_queries,
+            live_intel=self._live_intel_for("ip", clean_ip, refresh_live),
         )
 
     # -----------------------------------------------------------------------
@@ -218,48 +227,70 @@ class InvestigationService:
         domain: str,
         limit_recent: int = DEFAULT_RECENT_QUERIES_LIMIT,
         limit_relationships: int = DEFAULT_RELATIONSHIPS_LIMIT,
+        refresh_live: bool = False,
     ) -> DomainDossier:
         """
-        Assembles 360-degree forensic dossier for an individual domain entity.
+        Assembles a 360-degree dossier for an individual domain.
+
+        Local telemetry is optional: a valid domain with no recorded activity
+        still gets a live external reputation report instead of a 404.
         """
         clean_domain = self.validate_domain(domain)
         recent_limit = max(1, min(limit_recent, MAX_RECENT_QUERIES_LIMIT))
         rel_limit = max(1, min(limit_relationships, MAX_RELATIONSHIPS_LIMIT))
 
-        # 1. Authoritative profile lookup
-        profile_raw = self._investigation_repo.get_domain_profile(clean_domain)
-        if not profile_raw:
-            raise EntityNotFoundError(f"Domain '{clean_domain}' not found in domain profiles.")
-
-        # Invariant verification: sum of 4 verdicts == total_queries
-        v_sum = (
-            profile_raw["benign_queries"]
-            + profile_raw["malicious_queries"]
-            + profile_raw["review_needed_queries"]
-            + profile_raw["unknown_queries"]
-        )
-        if v_sum != profile_raw["total_queries"]:
-            raise InvariantViolationError(
-                f"Domain '{clean_domain}' profile verdict invariant violated: "
-                f"sum({v_sum}) != total_queries({profile_raw['total_queries']})"
-            )
-
-        profile = DomainProfileSummary(**profile_raw)
-
-        # 2. Bounded top querying clients
-        clients_raw = self._investigation_repo.get_domain_querying_clients(clean_domain, limit=rel_limit)
+        profile = None
         top_querying_clients: List[DomainQueryingClientItem] = []
-        for c in clients_raw:
-            c_sum = c["benign_visits"] + c["malicious_visits"] + c["review_needed_visits"] + c["unknown_visits"]
-            if c_sum != c["visit_count"]:
-                raise InvariantViolationError(
-                    f"Relationship invariant violated for domain {clean_domain} <- {c['client_ip']}: "
-                    f"sum({c_sum}) != visit_count({c['visit_count']})"
-                )
-            top_querying_clients.append(DomainQueryingClientItem(**c))
+        threat_intel = PersistedThreatIntel()
+        recent_queries: List[QueryEventSummary] = []
 
-        # 3. Persisted threat intelligence context
-        ti_raw = self._investigation_repo.get_domain_threat_intel(clean_domain)
+        # 1. Authoritative profile lookup (optional)
+        profile_raw = self._investigation_repo.get_domain_profile(clean_domain)
+        if profile_raw:
+            # Invariant verification: sum of 4 verdicts == total_queries
+            v_sum = (
+                profile_raw["benign_queries"]
+                + profile_raw["malicious_queries"]
+                + profile_raw["review_needed_queries"]
+                + profile_raw["unknown_queries"]
+            )
+            if v_sum != profile_raw["total_queries"]:
+                raise InvariantViolationError(
+                    f"Domain '{clean_domain}' profile verdict invariant violated: "
+                    f"sum({v_sum}) != total_queries({profile_raw['total_queries']})"
+                )
+
+            profile = DomainProfileSummary(**profile_raw)
+
+            # 2. Bounded top querying clients
+            clients_raw = self._investigation_repo.get_domain_querying_clients(clean_domain, limit=rel_limit)
+            for c in clients_raw:
+                c_sum = c["benign_visits"] + c["malicious_visits"] + c["review_needed_visits"] + c["unknown_visits"]
+                if c_sum != c["visit_count"]:
+                    raise InvariantViolationError(
+                        f"Relationship invariant violated for domain {clean_domain} <- {c['client_ip']}: "
+                        f"sum({c_sum}) != visit_count({c['visit_count']})"
+                    )
+                top_querying_clients.append(DomainQueryingClientItem(**c))
+
+            # 4. Bounded recent query events via ReportingRepository
+            _, raw_events = self._reporting_repo.get_queries(domain=clean_domain, limit=recent_limit)
+            recent_queries = [
+                QueryEventSummary(
+                    id=ev["id"],
+                    timestamp=ev["timestamp"],
+                    client_ip=ev["client_ip"],
+                    domain=ev["domain"],
+                    query_type=ev["query_type"],
+                    response_code=ev.get("response_code"),
+                    final_label=ev["final_label"],
+                    ti_source=ev.get("ti_source"),
+                )
+                for ev in raw_events
+            ]
+
+        # 3. Persisted threat intelligence context (independent of DNS telemetry)
+        ti_raw = self._investigation_repo.get_domain_threat_intel(clean_domain) or {}
         reputation_ctx = ReputationContext(**ti_raw["reputation"]) if ti_raw.get("reputation") else None
         daily_review_ctx = DailyReviewContext(**ti_raw["daily_review"]) if ti_raw.get("daily_review") else None
         reviewed_clean_ctx = ReviewedCleanContext(**ti_raw["reviewed_clean"]) if ti_raw.get("reviewed_clean") else None
@@ -270,49 +301,38 @@ class InvestigationService:
             reviewed_clean=reviewed_clean_ctx,
         )
 
-        # 4. Bounded recent query events via ReportingRepository
-        _, raw_events = self._reporting_repo.get_queries(domain=clean_domain, limit=recent_limit)
-        recent_queries = [
-            QueryEventSummary(
-                id=ev["id"],
-                timestamp=ev["timestamp"],
-                client_ip=ev["client_ip"],
-                domain=ev["domain"],
-                query_type=ev["query_type"],
-                response_code=ev.get("response_code"),
-                final_label=ev["final_label"],
-                ti_source=ev.get("ti_source"),
-            )
-            for ev in raw_events
-        ]
-
-        # 5. Live registration (RDAP) and DNS infrastructure enrichment (bounded deadline)
-        registration = None
-        dns_records = None
-        try:
-            from investigation.enrichment.rdap import RDAPEnricher
-            from investigation.enrichment.dns_resolver import DNSResolver
-            import time
-
-            deadline = time.monotonic() + 1.5
-            try:
-                registration = RDAPEnricher(timeout=1.5).enrich(clean_domain, deadline=deadline)
-            except Exception as exc:
-                logger.debug("RDAP lookup failed for %s: %s", clean_domain, exc)
-
-            try:
-                dns_records = DNSResolver(timeout=1.0).resolve(clean_domain, deadline=deadline)
-            except Exception as exc:
-                logger.debug("DNS resolution failed for %s: %s", clean_domain, exc)
-        except Exception as exc:
-            logger.debug("Enrichment subsystem unavailable for %s: %s", clean_domain, exc)
+        # 5. Live external intelligence (reputation + DNS + RDAP)
+        live_intel = self._live_intel_for("domain", clean_domain, refresh_live)
 
         return DomainDossier(
             domain=clean_domain,
             profile=profile,
+            observed_in_network=profile is not None,
             top_querying_clients=top_querying_clients,
             threat_intel=threat_intel,
             recent_queries=recent_queries,
-            registration=registration,
-            dns_records=dns_records,
+            registration=live_intel.registration if live_intel else None,
+            dns_records=live_intel.dns_records if live_intel else None,
+            live_intel=live_intel,
         )
+
+    # -----------------------------------------------------------------------
+    # Live Intelligence Helper
+    # -----------------------------------------------------------------------
+
+    def _live_intel_for(self, kind: str, value: str, refresh: bool = False):
+        """Fetch live external intelligence without failing the dossier.
+
+        The composition root (API route) injects ``LiveIntelService``; when it
+        is absent this layer performs no network I/O.
+        """
+        service = self._live_intel_service
+        if service is None:
+            return None
+        try:
+            if kind == "domain":
+                return service.lookup_domain(value, refresh=refresh)
+            return service.lookup_ip(value, refresh=refresh)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Live intelligence lookup failed for %s %s: %s", kind, value, exc)
+            return None

@@ -47,7 +47,12 @@ remains the break-glass path and now accepts ADMIN or SUPER_ADMIN.
     sudo install -m 600 -o root -g dnsnetra deploy/api.env.example /etc/dnsnetra/api.env
     sudo sed -i "s|^AUTH_SESSION_SECRET=.*|AUTH_SESSION_SECRET=$(openssl rand -hex 32)|" /etc/dnsnetra/api.env
     sudo sed -i "s|^AUTH_CAPTCHA_SECRET=.*|AUTH_CAPTCHA_SECRET=$(openssl rand -hex 32)|" /etc/dnsnetra/api.env
-    sudo editor /etc/dnsnetra/api.env   # set the database password only
+    sudo editor /etc/dnsnetra/api.env   # set the database password and VT/OTX API keys
+
+## 5b. Search indexes
+    # pg_trgm needs a superuser or the database owner. If the app role cannot
+    # create it, run `CREATE EXTENSION pg_trgm;` once as an admin, then:
+    .venv/bin/python database/migrate.py
 
 ## 6. TLS
     sudo ./deploy/gen-internal-cert.sh dnsnetra.corp.local

@@ -14,7 +14,6 @@ from investigation.service import InvestigationService, classify_activity_catego
 from investigation.schemas import (
     ClientDossier,
     DomainDossier,
-    EntityNotFoundError,
     InvalidEntityError,
     InvariantViolationError,
 )
@@ -171,16 +170,18 @@ def test_persisted_ti_multiple_contexts_coexistence():
 # 4. Existence & Empty State Tests
 # ---------------------------------------------------------------------------
 
-def test_client_not_found_raises_404(service):
-    with pytest.raises(EntityNotFoundError) as exc:
-        service.get_client_dossier("192.0.2.254")
-    assert "not found" in str(exc.value)
+def test_client_not_found_returns_empty_dossier(service):
+    dossier = service.get_client_dossier("192.0.2.254")
+    assert dossier.profile is None
+    assert dossier.observed_in_network is False
+    assert dossier.live_intel is None
 
 
-def test_domain_not_found_raises_404(service):
-    with pytest.raises(EntityNotFoundError) as exc:
-        service.get_domain_dossier("totally-unobserved-test-123456.org")
-    assert "not found" in str(exc.value)
+def test_domain_not_found_returns_empty_dossier(service):
+    dossier = service.get_domain_dossier("totally-unobserved-test-123456.org")
+    assert dossier.profile is None
+    assert dossier.observed_in_network is False
+    assert dossier.live_intel is None
 
 
 def test_client_clean_returns_valid_dossier_with_empty_threat_activity():

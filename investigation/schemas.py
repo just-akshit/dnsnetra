@@ -10,6 +10,8 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
+from investigation.live.models import LiveIntelReport
+
 
 # ---------------------------------------------------------------------------
 # Domain Exceptions
@@ -107,10 +109,12 @@ class ClientDossier(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     client_ip: str
-    profile: ClientProfileSummary
+    profile: Optional[ClientProfileSummary] = None
+    observed_in_network: bool = True
     top_domains: List[ClientRelationshipItem] = Field(default_factory=list)
     threat_activity: List[ClientThreatActivityItem] = Field(default_factory=list)
     recent_queries: List[QueryEventSummary] = Field(default_factory=list)
+    live_intel: Optional[LiveIntelReport] = None
 
 
 # ---------------------------------------------------------------------------
@@ -209,9 +213,11 @@ class DomainDossier(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     domain: str
-    profile: DomainProfileSummary
+    profile: Optional[DomainProfileSummary] = None
+    observed_in_network: bool = True
     top_querying_clients: List[DomainQueryingClientItem] = Field(default_factory=list)
     threat_intel: PersistedThreatIntel
     recent_queries: List[QueryEventSummary] = Field(default_factory=list)
     registration: Optional[DomainRegistrationResult] = None
     dns_records: Optional[DNSResolutionResult] = None
+    live_intel: Optional[LiveIntelReport] = None

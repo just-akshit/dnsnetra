@@ -12,8 +12,8 @@ from .base import BaseThreatProvider
 
 logger = logging.getLogger(__name__)
 
-GENERAL_URL = "https://otx.alienvault.com/api/v1/indicators/domain/{domain}/general"
-ANALYSIS_URL = "https://otx.alienvault.com/api/v1/indicators/domain/{domain}/analysis"
+INDICATOR_GENERAL_URL = "https://otx.alienvault.com/api/v1/indicators/{kind}/{indicator}/general"
+INDICATOR_ANALYSIS_URL = "https://otx.alienvault.com/api/v1/indicators/{kind}/{indicator}/analysis"
 
 
 class AlienVaultOTXProvider(BaseThreatProvider):
@@ -55,6 +55,15 @@ class AlienVaultOTXProvider(BaseThreatProvider):
         return {"X-OTX-API-KEY": api_key, "Accept": "application/json"}
 
     def lookup(self, domain: str) -> ThreatProviderResult:
+        """Query OTX for a domain."""
+        return self._lookup(domain, kind="domain")
+
+    def lookup_ip(self, ip: str) -> ThreatProviderResult:
+        """Query OTX for an IPv4/IPv6 address."""
+        kind = "IPv6" if ":" in ip else "IPv4"
+        return self._lookup(ip, kind=kind)
+
+    def _lookup(self, domain: str, kind: str = "domain") -> ThreatProviderResult:
         logger.info("[OTX] Lookup started — %s", domain)
 
         if not self._key_manager and not self._api_key:
@@ -65,7 +74,7 @@ class AlienVaultOTXProvider(BaseThreatProvider):
                 error="OTX_API_KEY not set.",
             )
 
-        general_url = GENERAL_URL.format(domain=domain)
+        general_url = INDICATOR_GENERAL_URL.format(kind=kind, indicator=domain)
 
         # Bounded retry loop for the General endpoint.
         # If APIKeyManager is active, attempt at most once per currently available key
@@ -210,7 +219,7 @@ class AlienVaultOTXProvider(BaseThreatProvider):
         # Failures here do not fail the overall lookup; we simply continue with
         # general data only. Uses the same bounded retry / key-rotation logic as
         # the General endpoint.
-        analysis_url = ANALYSIS_URL.format(domain=domain)
+        analysis_url = INDICATOR_ANALYSIS_URL.format(kind=kind, indicator=domain)
         analysis_data: dict = {}
 
         max_analysis = (

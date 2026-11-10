@@ -18,9 +18,10 @@ import ipaddress
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 
+from api.rate_limiter import enforce_search_rate_limit
 from api.rbac import require_permission
 from api.schemas import (
     CanonicalVerdict,
@@ -327,6 +328,7 @@ def get_report_domains(
     description="Multi-criteria paginated query search across authoritative domain_query_history with deterministic sorting.",
 )
 def get_report_queries(
+    request: Request,
     limit: int = Query(50, ge=1, le=1000, description="Max items to return"),
     offset: int = Query(0, ge=0, description="Offset index"),
     page: Optional[int] = Query(None, ge=1, description="Legacy page number alias"),
@@ -348,6 +350,10 @@ def get_report_queries(
     eff_limit, eff_offset = _parse_pagination(limit, offset, page, page_size)
     service = ReportingService()
 
+    stripped_search = search.strip() if search and search.strip() else None
+    if stripped_search:
+        enforce_search_rate_limit(request)
+
     # Canonical verdict normalization
     verdict_param = verdict or label
     canon_verdict: Optional[str] = None
@@ -364,7 +370,7 @@ def get_report_queries(
             verdict=canon_verdict,
             query_type=query_type,
             time_range=tr,
-            search=search.strip() if search and search.strip() else None,
+            search=stripped_search,
             sort_by=sort or "timestamp",
             sort_order=order or "desc",
             limit=eff_limit,
@@ -501,28 +507,38 @@ def get_report_entity(
     if eff_type == "client":
         try:
             dossier = inv_service.get_client_dossier(clean_entity)
-            return EntityReportResponse(
-                entity=clean_entity,
-                entity_type="client",
-                client_dossier=dossier,
-            )
         except EntityNotFoundError as exc:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
         except InvalidEntityError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if not dossier.observed_in_network:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Client IP '{dossier.client_ip}' not found in client profiles.",
+            )
+        return EntityReportResponse(
+            entity=clean_entity,
+            entity_type="client",
+            client_dossier=dossier,
+        )
 
     else:  # domain
         try:
             dossier = inv_service.get_domain_dossier(clean_entity)
-            return EntityReportResponse(
-                entity=clean_entity,
-                entity_type="domain",
-                domain_dossier=dossier,
-            )
         except EntityNotFoundError as exc:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
         except InvalidEntityError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if not dossier.observed_in_network:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Domain '{dossier.domain}' not found in domain profiles.",
+            )
+        return EntityReportResponse(
+            entity=clean_entity,
+            entity_type="domain",
+            domain_dossier=dossier,
+        )
 
 
 @router.get(

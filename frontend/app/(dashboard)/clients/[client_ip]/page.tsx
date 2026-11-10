@@ -16,9 +16,10 @@ import {
   ExternalLinkIcon,
   LaptopIcon,
 } from "lucide-react"
-import { dnsnetraApi, type ClientDetail } from "@/lib/data-table/api-client"
+import { dnsnetraApi, ApiError, type ClientDetail } from "@/lib/data-table/api-client"
 import { formatDnsnetraTimestamp, formatNumber } from "@/lib/data-table/formatters"
 import { DataTableStatus } from "@/components/data-table/data-table-status"
+import { LiveIntelSection } from "@/components/intelligence/live-verdict"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -34,18 +35,24 @@ export default function ClientProfilePage() {
   const [detail, setDetail] = React.useState<ClientDetail | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
+  const [notFound, setNotFound] = React.useState(false)
 
-  const loadData = React.useCallback(async () => {
+  const loadData = React.useCallback(async (forceRefresh = false) => {
     if (!clientIp) return
     setLoading(true)
     setError(null)
+    setNotFound(false)
     try {
       // Strictly do not send temporal params to investigation endpoints
-      const res = await dnsnetraApi.getClientInvestigation(clientIp)
+      const res = await dnsnetraApi.getClientInvestigation(clientIp, forceRefresh)
       setDetail(res)
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to load client profile."
-      setError(msg)
+      if (err instanceof ApiError && err.status === 404) {
+        setNotFound(true)
+      } else {
+        const msg = err instanceof Error ? err.message : "Failed to load client profile."
+        setError(msg)
+      }
     } finally {
       setLoading(false)
     }
@@ -74,6 +81,34 @@ export default function ClientProfilePage() {
     )
   }
 
+  if (notFound) {
+    return (
+      <div className="flex flex-col items-center justify-center p-12 text-center gap-4 min-h-[400px]">
+        <div className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+          <LaptopIcon className="size-6" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <h2 className="text-lg font-semibold text-foreground">No client activity observed</h2>
+          <p className="text-xs text-muted-foreground max-w-md">
+            DNSNetra has no recorded telemetry for{" "}
+            <span className="font-mono font-medium text-foreground">{clientIp}</span>. It may
+            not be a monitored client endpoint yet.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => router.push("/clients")}>
+            <ArrowLeftIcon className="mr-1.5 size-3.5" />
+            Back to Clients
+          </Button>
+          <Button variant="default" size="sm" onClick={() => loadData(true)}>
+            <RefreshCwIcon className="mr-1.5 size-3.5" />
+            Check Again
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   if (error || !detail) {
     return (
       <div className="flex flex-col items-center justify-center p-12 text-center gap-4 min-h-[400px]">
@@ -93,7 +128,7 @@ export default function ClientProfilePage() {
             <ArrowLeftIcon className="mr-1.5 size-3.5" />
             Back to Clients
           </Button>
-          <Button variant="default" size="sm" onClick={loadData}>
+          <Button variant="default" size="sm" onClick={() => loadData(true)}>
             <RefreshCwIcon className="mr-1.5 size-3.5" />
             Retry
           </Button>
@@ -103,8 +138,8 @@ export default function ClientProfilePage() {
   }
 
   const profile = detail.profile
-  const totalQueries = profile.total_queries ?? 0
-  const uniqueDomains = profile.unique_domains ?? 0
+  const totalQueries = profile?.total_queries ?? 0
+  const uniqueDomains = profile?.unique_domains ?? 0
 
   return (
     <div className="flex flex-col gap-6 p-4 lg:p-6">
@@ -132,6 +167,7 @@ export default function ClientProfilePage() {
             <Badge variant="outline" className="font-mono text-xs">
               Monitored Endpoint
             </Badge>
+            <DataTableStatus status={detail.live_intel?.verdict.state ?? "unknown"} />
           </div>
         </div>
 
@@ -139,7 +175,7 @@ export default function ClientProfilePage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={loadData}
+            onClick={() => loadData(true)}
             className="h-8 gap-1.5 text-xs font-normal"
           >
             <RefreshCwIcon className="size-3.5" />
@@ -148,6 +184,14 @@ export default function ClientProfilePage() {
         </div>
       </div>
 
+      <LiveIntelSection
+        live={detail.live_intel}
+        kind="ip"
+        observedInNetwork={detail.observed_in_network}
+      />
+
+      {profile ? (
+        <>
       {/* 2. Top Metric Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <Card className="p-3 bg-card border-border/80">
@@ -460,6 +504,21 @@ export default function ClientProfilePage() {
           )}
         </CardContent>
       </Card>
+        </>
+      ) : (
+        <Card className="border-dashed border-border bg-muted/10">
+          <CardContent className="flex flex-col items-center justify-center gap-2 p-8 text-center">
+            <LaptopIcon className="size-8 text-muted-foreground/60" />
+            <span className="text-sm font-medium text-foreground">
+              No client telemetry observed in this network
+            </span>
+            <span className="text-xs text-muted-foreground max-w-md">
+              This address has no recorded DNS activity from a monitored endpoint. The external
+              intelligence above is still valid.
+            </span>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

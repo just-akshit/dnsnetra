@@ -256,11 +256,12 @@ def set_manual_verdict(
         }
 
     elif verdict_choice == "malicious":
+        confidence = payload.confidence if payload.confidence is not None else 1.0
         promote_to_malicious(
             canonical,
             metadata={
                 "source": admin_tag,
-                "confidence": payload.confidence or 1.0,
+                "confidence": confidence,
                 "admin_reason": payload.reason,
                 "admin_email": current_user.get("email"),
             },

@@ -67,6 +67,7 @@ def store_malicious_domain(
     metadata: Optional[dict[str, Any]] = None,
     source: Optional[str] = None,
     confidence: Optional[float] = None,
+    conn: Optional[PgConnection] = None,
     **kwargs: Any,
 ) -> bool:
     metadata = dict(metadata or {})
@@ -106,22 +107,26 @@ def store_malicious_domain(
         RETURNING (xmax = 0) AS inserted;
     """
 
-    with get_connection() as conn:
+    params = (
+        domain,
+        _DEFAULT_STATUS,
+        source,
+        confidence,
+        query_count,
+        client_ip,
+        query_type,
+        query_count,
+    )
+
+    if conn is not None:
         with conn.cursor() as cur:
-            cur.execute(
-                upsert_sql,
-                (
-                    domain,
-                    _DEFAULT_STATUS,
-                    source,
-                    confidence,
-                    query_count,
-                    client_ip,
-                    query_type,
-                    query_count,
-                ),
-            )
+            cur.execute(upsert_sql, params)
             inserted: bool = cur.fetchone()[0]
+    else:
+        with get_connection() as own_conn:
+            with own_conn.cursor() as cur:
+                cur.execute(upsert_sql, params)
+                inserted = cur.fetchone()[0]
 
     if inserted:
         logger.info("Inserted malicious domain: %s (source=%s)", domain, source)

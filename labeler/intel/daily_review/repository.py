@@ -14,6 +14,8 @@ from typing import Any, Optional
 
 import psycopg2.extras
 
+from reporting.repository import like_pattern
+
 from ..reputation.connection import get_connection
 from ..reputation.repository import store_malicious_domain
 from .models import DailyReviewRecord, ReviewedCleanRecord, ReviewStatus
@@ -178,10 +180,6 @@ def promote_to_malicious(
     vt_json = _to_jsonb(vt_result)
     otx_json = _to_jsonb(otx_result)
 
-    # 1. Upsert into reputation_domains
-    store_malicious_domain(domain, metadata=metadata)
-
-    # 2. Update daily_review_domains status
     update_review_sql = """
         UPDATE daily_review_domains
         SET status          = %s,
@@ -191,13 +189,17 @@ def promote_to_malicious(
             updated_at      = NOW()
         WHERE domain = %s;
     """
+
+    # One connection/transaction so the reputation upsert and the review-status
+    # update commit together or not at all.
     with get_connection() as conn:
+        store_malicious_domain(domain, metadata=metadata, conn=conn)
         with conn.cursor() as cur:
             cur.execute(
                 update_review_sql,
                 (ReviewStatus.MALICIOUS.value, vt_json, otx_json, domain),
             )
-            return True
+        return True
 
 
 def record_api_failure(
@@ -346,7 +348,7 @@ def list_domains(
 
     if search:
         clauses.append("domain ILIKE %s")
-        params.append(f"%{search}%")
+        params.append(like_pattern(search))
 
     if is_due is True:
         clauses.append("next_check_at <= NOW()")

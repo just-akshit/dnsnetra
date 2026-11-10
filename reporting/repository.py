@@ -22,6 +22,16 @@ logger = logging.getLogger(__name__)
 
 _SEARCH_MAX_LENGTH = 253
 
+# Entity reports filter domain_query_history by exactly one entity column.
+_ENTITY_COLUMNS = {"domain": "domain", "client": "client_ip"}
+
+
+def _entity_column(entity_type: str) -> str:
+    try:
+        return _ENTITY_COLUMNS[entity_type]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported entity type: {entity_type!r}") from exc
+
 
 def like_pattern(term: str) -> str:
     """Build a safe ILIKE pattern: escape metacharacters and cap length.
@@ -132,9 +142,84 @@ class ReportingRepository:
                     "unique_domains": int(row.get("unique_domains") or 0),
                 }
 
+    def get_entity_summary(
+        self,
+        entity_type: str,
+        value: str,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+    ) -> Dict[str, Any]:
+        """Summary for one domain/client, optionally bounded to [start, end)."""
+        column = _entity_column(entity_type)
+        clauses = [f"{column} = %s"]
+        params: List[Any] = [value]
+        if start_time is not None and end_time is not None:
+            clauses.append("timestamp >= %s AND timestamp < %s")
+            params.extend([start_time, end_time])
+
+        with self._get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(f"""
+                    SELECT
+                        COUNT(*) AS total_queries,
+                        COUNT(*) FILTER (WHERE final_label = 'Benign') AS benign_queries,
+                        COUNT(*) FILTER (WHERE final_label = 'Malicious') AS malicious_queries,
+                        COUNT(*) FILTER (WHERE final_label = 'Review Needed') AS review_needed_queries,
+                        COUNT(*) FILTER (WHERE final_label = 'Unknown' OR final_label IS NULL) AS unknown_queries,
+                        COUNT(DISTINCT client_ip) AS unique_clients,
+                        COUNT(DISTINCT domain) AS unique_domains
+                    FROM domain_query_history
+                    WHERE {' AND '.join(clauses)};
+                """, tuple(params))
+                row = cur.fetchone() or {}
+                return {
+                    "total_queries": int(row.get("total_queries") or 0),
+                    "benign_queries": int(row.get("benign_queries") or 0),
+                    "malicious_queries": int(row.get("malicious_queries") or 0),
+                    "review_needed_queries": int(row.get("review_needed_queries") or 0),
+                    "unknown_queries": int(row.get("unknown_queries") or 0),
+                    "unique_clients": int(row.get("unique_clients") or 0),
+                    "unique_domains": int(row.get("unique_domains") or 0),
+                }
+
     # -----------------------------------------------------------------------
     # 2. Timeseries Queries
     # -----------------------------------------------------------------------
+
+    def get_entity_timeseries(
+        self,
+        entity_type: str,
+        value: str,
+        start_time: datetime,
+        end_time: datetime,
+        bucket_hours: float = 1,
+    ) -> List[Dict[str, Any]]:
+        """Bucketed verdict counts for one domain/client over [start, end)."""
+        column = _entity_column(entity_type)
+        width_seconds = max(1, int(float(bucket_hours) * 3600))
+        with self._get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(f"""
+                    SELECT
+                        to_timestamp(
+                            CASE
+                                WHEN %s = 604800 THEN (floor((EXTRACT(EPOCH FROM timestamp) - 345600) / 604800) * 604800 + 345600)
+                                ELSE (floor(EXTRACT(EPOCH FROM timestamp) / %s) * %s)
+                            END
+                        ) AS bucket_time,
+                        COUNT(*) AS total_queries,
+                        COUNT(*) FILTER (WHERE final_label = 'Benign') AS benign_queries,
+                        COUNT(*) FILTER (WHERE final_label = 'Malicious') AS malicious_queries,
+                        COUNT(*) FILTER (WHERE final_label = 'Review Needed') AS review_needed_queries,
+                        COUNT(*) FILTER (WHERE final_label = 'Unknown' OR final_label IS NULL) AS unknown_queries
+                    FROM domain_query_history
+                    WHERE {column} = %s AND timestamp >= %s AND timestamp < %s
+                    GROUP BY bucket_time
+                    ORDER BY bucket_time ASC;
+                """,
+                    (width_seconds, width_seconds, width_seconds,
+                     value, start_time, end_time))
+                return [dict(r) for r in cur.fetchall()]
 
     def get_raw_timeseries(
         self, start_time: datetime, end_time: datetime, width_seconds: int = 3600

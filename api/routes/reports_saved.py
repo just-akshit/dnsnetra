@@ -9,7 +9,7 @@ from fastapi.responses import Response, StreamingResponse
 
 from api.audit import AuditAction, log_audit_event
 from api.rate_limiter import enforce_search_rate_limit
-from api.rbac import require_permission
+from api.rbac import has_permission, require_permission
 from api.schemas.reports_saved import (
     ReportCreateRequest, ReportListResponse, ReportReviewRequest,
     SavedReportDetail,
@@ -116,13 +116,27 @@ def review_report(
     current_user: dict[str, Any] = Depends(require_permission("reports:write")),
 ):
     service = ReportService()
+    current = service.get_report(public_id)
+    if not current:
+        raise HTTPException(status_code=404, detail="Report not found.")
+
+    # Only touch fields the caller actually supplied.
+    updates = payload.model_dump(exclude_unset=True, mode="json")
+    status = updates.get("status")
+
+    # Reopening a reviewed report is a management action (spec 10.1).
+    if (current.status == ReportStatus.REVIEWED.value
+            and status is not None
+            and status != ReportStatus.REVIEWED.value
+            and not has_permission(current_user["role"], "cases:manage")):
+        raise HTTPException(
+            status_code=403,
+            detail="Reopening a reviewed report requires cases:manage.",
+        )
+
     try:
         report = service.review_report(
-            public_id,
-            status=payload.status.value,
-            verdict=payload.verdict,
-            conclusion=payload.conclusion,
-            reviewer_id=current_user["id"],
+            public_id, updates=updates, reviewer_id=current_user["id"],
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -131,7 +145,7 @@ def review_report(
         raise HTTPException(status_code=404, detail="Report not found.")
 
     _audit(AuditAction.REPORT_REVIEWED, request, current_user, public_id,
-           status=payload.status.value, verdict=payload.verdict)
+           status=status, verdict=updates.get("verdict"))
     return report
 
 

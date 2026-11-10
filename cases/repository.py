@@ -136,6 +136,14 @@ class CaseRepository:
     def update_with_event(self, public_id: str, fields: dict[str, Any], *,
                           actor_id, kind, metadata=None) -> Optional[CaseDetail]:
         """Update a case and append its timeline event in one transaction."""
+        return self.update_with_events(
+            public_id, fields, actor_id=actor_id,
+            events=[(kind, metadata or {})],
+        )
+
+    def update_with_events(self, public_id: str, fields: dict[str, Any], *,
+                           actor_id, events) -> Optional[CaseDetail]:
+        """Update a case and append several timeline events atomically."""
         allowed = {"status", "priority", "assigned_to", "resolution",
                    "resolved_by", "resolved_at", "closed_at", "title", "description"}
         clean = {k: v for k, v in fields.items() if k in allowed}
@@ -153,13 +161,14 @@ class CaseRepository:
                 if row is None:
                     conn.rollback()
                     return None
-                cur.execute(
-                    """
-                    INSERT INTO case_events (case_id, actor_id, kind, body, metadata)
-                    VALUES (%s, %s, %s, %s, %s::jsonb);
-                    """,
-                    (row[0], actor_id, kind, None, json.dumps(metadata or {})),
-                )
+                for kind, metadata in events or ():
+                    cur.execute(
+                        """
+                        INSERT INTO case_events (case_id, actor_id, kind, body, metadata)
+                        VALUES (%s, %s, %s, %s, %s::jsonb);
+                        """,
+                        (row[0], actor_id, kind, None, json.dumps(metadata or {})),
+                    )
             conn.commit()
         return self.get(public_id)
 

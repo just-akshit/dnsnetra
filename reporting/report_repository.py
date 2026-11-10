@@ -119,16 +119,30 @@ class ReportRepository:
                 row = cur.fetchone()
         return row[0] if row else None
 
-    def review(self, public_id: str, *, status: str, verdict, conclusion,
-               reviewer_id: int) -> Optional[SavedReportDetail]:
+    def review(self, public_id: str, *, fields: dict[str, Any],
+               stamp_reviewed: bool = False) -> Optional[SavedReportDetail]:
+        """Update only the supplied review fields.
+
+        ``verdict``/``conclusion`` are left untouched when omitted, and
+        ``reviewed_at`` is only stamped for an explicit review transition.
+        """
+        allowed = {"status", "verdict", "conclusion", "reviewed_by"}
+        clean = {k: v for k, v in fields.items() if k in allowed}
+        assignments = [f"{k} = %s" for k in clean]
+        params: list[Any] = list(clean.values())
+        if stamp_reviewed:
+            assignments.append("reviewed_at = NOW()")
+        if not assignments:
+            return self.get(public_id)
+        assignments.append("updated_at = NOW()")
+
         with self._get_conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute(
-                    """
+                    f"""
                     WITH updated AS (
                         UPDATE reports
-                        SET status = %s, verdict = %s, conclusion = %s,
-                            reviewed_by = %s, reviewed_at = NOW(), updated_at = NOW()
+                        SET {", ".join(assignments)}
                         WHERE public_id = %s
                         RETURNING *
                     )
@@ -136,7 +150,7 @@ class ReportRepository:
                     FROM updated u
                     LEFT JOIN cases c ON c.id = u.case_id;
                     """,
-                    (status, verdict, conclusion, reviewer_id, public_id),
+                    tuple(params + [public_id]),
                 )
                 row = cur.fetchone()
             conn.commit()

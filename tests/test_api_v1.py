@@ -727,3 +727,17 @@ def test_daily_review_endpoints_and_mutations(auth_headers, analyst_headers, mon
     assert res_trig.json()["success"] is True
     assert res_trig.json()["investigation_result"] == "CLEAN"
 
+
+
+def test_legacy_csv_export_is_rate_limited(auth_headers, monkeypatch):
+    """The legacy CSV export must pass through the search throttle."""
+    from fastapi import HTTPException
+
+    from api.routes import reports as report_routes
+
+    def _deny(request):
+        raise HTTPException(status_code=429, detail="Too many searches.")
+
+    monkeypatch.setattr(report_routes, "enforce_search_rate_limit", _deny)
+    res = client.get("/api/v1/reports/export/csv?limit=1", headers=auth_headers)
+    assert res.status_code == 429

@@ -109,12 +109,36 @@ class CaseService:
             fields["resolved_by"] = None
             fields["resolved_at"] = None
 
+        events = []
         if next_status != case.status:
-            updated = self.repository.update_with_event(
-                public_id, fields,
-                actor_id=actor_id, kind="status_changed",
-                metadata={"from": case.status, "to": next_status,
-                          "resolution": resolution},
+            events.append((
+                "status_changed",
+                {"from": case.status, "to": next_status, "resolution": resolution},
+            ))
+        if "assigned_to" in payload and payload["assigned_to"] != case.assigned_to:
+            events.append((
+                "assigned",
+                {"from": case.assigned_to, "to": payload["assigned_to"]},
+            ))
+        if "priority" in payload and payload["priority"] != case.priority:
+            events.append((
+                "priority_changed",
+                {"from": case.priority, "to": payload["priority"]},
+            ))
+        if "resolution" in payload and payload["resolution"] != case.resolution:
+            events.append((
+                "resolution_set",
+                {"from": case.resolution, "to": payload["resolution"]},
+            ))
+        elif next_status == "resolved" and case.status != "resolved":
+            events.append((
+                "resolution_set",
+                {"from": case.resolution, "to": resolution},
+            ))
+
+        if events:
+            updated = self.repository.update_with_events(
+                public_id, fields, actor_id=actor_id, events=events,
             )
         else:
             updated = self.repository.update(public_id, fields)

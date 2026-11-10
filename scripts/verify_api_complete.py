@@ -252,7 +252,7 @@ def run_master_verification() -> bool:
         # 404: Not Found
         {"name": "GET /api/v1/domains/nonexistent-domain-xyz999.com", "call": lambda: client.get("/api/v1/domains/nonexistent-domain-xyz999.com", headers=auth_headers), "expected": 404},
         {"name": "GET /api/v1/clients/10.254.254.254", "call": lambda: client.get("/api/v1/clients/10.254.254.254", headers=auth_headers), "expected": 404},
-        {"name": "GET /api/v1/reports/entity?entity=nonexistent-entity.local", "call": lambda: client.get("/api/v1/reports/entity?entity=nonexistent-entity.local", headers=auth_headers), "expected": 404},
+        {"name": "GET /api/v1/reports/entity?entity=nonexistent-entity.local", "call": lambda: client.get("/api/v1/reports/entity?entity=nonexistent-entity.local", headers=auth_headers), "expected": 200},
 
         # 400: Bad Request
         {"name": "GET /api/v1/reports/summary with invalid temporal window", "call": lambda: client.get("/api/v1/reports/summary?window=invalid_window_spec", headers=auth_headers), "expected": 400},

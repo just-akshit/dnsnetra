@@ -661,6 +661,7 @@ def get_report_export_csv(
     current_user: dict[str, Any] = Depends(require_permission("reports:export")),
 ) -> StreamingResponse:
     """Streaming CSV export endpoint."""
+    enforce_search_rate_limit(request)
     service = ReportingService()
 
     filter_ip = client_ip

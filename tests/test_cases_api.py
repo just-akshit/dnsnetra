@@ -266,3 +266,66 @@ def test_create_with_already_linked_report_does_not_create_a_case(
     conflict = _create(analyst_headers, cases, report_id=report_id)
     assert conflict.status_code == 409
     assert total() == before
+
+
+def test_patch_appends_assignment_and_priority_events(
+    admin_headers, analyst_headers, other_analyst, cases
+):
+    created = _create(analyst_headers, cases)
+    public_id = created.json()["public_id"]
+
+    res = client.patch(
+        f"/api/v1/cases/{public_id}",
+        headers=admin_headers,
+        json={"assigned_to": other_analyst, "priority": "critical"},
+    )
+    assert res.status_code == 200
+
+    events = client.get(
+        f"/api/v1/cases/{public_id}", headers=admin_headers
+    ).json()["events"]
+    by_kind = {event["kind"]: event for event in events}
+    assert by_kind["assigned"]["metadata"] == {"from": None, "to": other_analyst}
+    assert by_kind["priority_changed"]["metadata"] == {
+        "from": "high", "to": "critical",
+    }
+
+    rows, _ = get_audit_logs(action="CASE_ASSIGNED", limit=1)
+    assert rows[0]["target_id"] == public_id
+
+
+def test_resolve_and_close_append_events_and_audit(
+    admin_headers, analyst_headers, cases
+):
+    created = _create(analyst_headers, cases)
+    public_id = created.json()["public_id"]
+
+    client.patch(f"/api/v1/cases/{public_id}", headers=admin_headers,
+                 json={"status": "triaged"})
+    client.patch(f"/api/v1/cases/{public_id}", headers=admin_headers,
+                 json={"status": "investigating"})
+    resolved = client.patch(
+        f"/api/v1/cases/{public_id}", headers=admin_headers,
+        json={"status": "resolved", "resolution": "true_positive"},
+    )
+    assert resolved.status_code == 200
+
+    events = client.get(
+        f"/api/v1/cases/{public_id}", headers=admin_headers
+    ).json()["events"]
+    by_kind = {event["kind"]: event for event in events}
+    assert by_kind["status_changed"]["metadata"]["to"] == "resolved"
+    assert by_kind["resolution_set"]["metadata"] == {
+        "from": None, "to": "true_positive",
+    }
+
+    rows, _ = get_audit_logs(action="CASE_RESOLVED", limit=1)
+    assert rows[0]["target_id"] == public_id
+
+    closed = client.patch(
+        f"/api/v1/cases/{public_id}", headers=admin_headers,
+        json={"status": "closed"},
+    )
+    assert closed.status_code == 200
+    rows, _ = get_audit_logs(action="CASE_CLOSED", limit=1)
+    assert rows[0]["target_id"] == public_id

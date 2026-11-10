@@ -162,6 +162,63 @@ class ReportingService:
             malicious_query_percentage=pct,
         )
 
+    def get_entity_summary(
+        self,
+        entity_type: str,
+        value: str,
+        time_range: Optional[Union[ResolvedTimeRange, datetime, str]] = None,
+        start_time: Optional[Union[datetime, str]] = None,
+        end_time: Optional[Union[datetime, str]] = None,
+        window: Optional[str] = None,
+    ) -> ReportingSummary:
+        """Summary scoped to one domain/client instead of the whole network."""
+        tr = _coerce_time_range(
+            time_range=time_range,
+            start_time=start_time,
+            end_time=end_time,
+            window=window,
+            default_policy=TemporalDefaultPolicy.ALL_TIME,
+        )
+
+        time_win = None
+        if tr.is_all_time:
+            raw = self.repository.get_entity_summary(entity_type, value)
+        else:
+            time_win = {
+                "start": format_iso8601_utc(tr.start),
+                "end": format_iso8601_utc(tr.end),
+            }
+            if tr.is_empty:
+                return ReportingSummary(
+                    time_window=time_win,
+                    total_queries=0,
+                    unique_clients=0,
+                    unique_domains=0,
+                    verdict_breakdown=VerdictBreakdown(),
+                    malicious_query_percentage=0.0,
+                )
+            raw = self.repository.get_entity_summary(
+                entity_type, value, tr.start, tr.observable_end
+            )
+
+        total_q = raw["total_queries"]
+        mal_q = raw["malicious_queries"]
+        pct = round((mal_q * 100.0) / total_q, 2) if total_q > 0 else 0.0
+
+        return ReportingSummary(
+            time_window=time_win,
+            total_queries=total_q,
+            unique_clients=raw["unique_clients"],
+            unique_domains=raw["unique_domains"],
+            verdict_breakdown=VerdictBreakdown(
+                benign=raw["benign_queries"],
+                malicious=mal_q,
+                review_needed=raw["review_needed_queries"],
+                unknown=raw["unknown_queries"],
+            ),
+            malicious_query_percentage=pct,
+        )
+
     # -----------------------------------------------------------------------
     # 2. Timeseries
     # -----------------------------------------------------------------------
@@ -232,6 +289,85 @@ class ReportingService:
                 b_key = format_iso8601_utc(bt)
             else:
                 b_key = str(bt)
+            if b_key in buckets_map:
+                buckets_map[b_key]["total_queries"] += row["total_queries"]
+                buckets_map[b_key]["benign_queries"] += row["benign_queries"]
+                buckets_map[b_key]["malicious_queries"] += row["malicious_queries"]
+                buckets_map[b_key]["review_needed_queries"] += row["review_needed_queries"]
+                buckets_map[b_key]["unknown_queries"] += row["unknown_queries"]
+
+        sorted_buckets = [
+            TimeseriesBucket(**data)
+            for _, data in sorted(buckets_map.items(), key=lambda item: item[0])
+        ]
+
+        return ReportingTimeseries(
+            start_time=s_iso,
+            end_time=e_iso,
+            bucket_size=b_label,
+            buckets=sorted_buckets,
+        )
+
+    def get_entity_timeseries(
+        self,
+        entity_type: str,
+        value: str,
+        time_range: Optional[Union[ResolvedTimeRange, datetime, str]] = None,
+        start_time: Optional[Union[datetime, str]] = None,
+        end_time: Optional[Union[datetime, str]] = None,
+        window: Optional[str] = None,
+        bucket: Optional[str] = None,
+        bucket_hours: Optional[int] = 1,
+    ) -> ReportingTimeseries:
+        """Timeseries scoped to one domain/client instead of the whole network."""
+        if bucket is None and bucket_hours is not None and not window and not isinstance(time_range, ResolvedTimeRange):
+            bucket = f"{bucket_hours}h"
+
+        tr = _coerce_time_range(
+            time_range=time_range,
+            start_time=start_time,
+            end_time=end_time,
+            window=window,
+            bucket=bucket,
+            default_policy=TemporalDefaultPolicy.ROLLING_24H,
+        )
+
+        if tr.is_all_time:
+            raise InvalidTimeRangeError("All-time timeseries is not permitted.")
+
+        s_iso = format_iso8601_utc(tr.start)
+        e_iso = format_iso8601_utc(tr.end)
+        b_label = tr.bucket_spec.bucket_label
+
+        if tr.is_empty:
+            return ReportingTimeseries(
+                start_time=s_iso,
+                end_time=e_iso,
+                bucket_size=b_label,
+                buckets=[],
+            )
+
+        resolved_buckets = tr.generate_buckets()
+        buckets_map: Dict[str, Dict[str, Any]] = {}
+        for b in resolved_buckets:
+            b_key = format_iso8601_utc(b.bucket_start)
+            buckets_map[b_key] = {
+                "timestamp": b_key,
+                "total_queries": 0,
+                "benign_queries": 0,
+                "malicious_queries": 0,
+                "review_needed_queries": 0,
+                "unknown_queries": 0,
+            }
+
+        db_rows = self.repository.get_entity_timeseries(
+            entity_type, value, tr.start, tr.observable_end,
+            tr.bucket_spec.bucket_seconds / 3600,
+        )
+
+        for row in db_rows:
+            bt = row["bucket_time"]
+            b_key = format_iso8601_utc(bt) if isinstance(bt, datetime) else str(bt)
             if b_key in buckets_map:
                 buckets_map[b_key]["total_queries"] += row["total_queries"]
                 buckets_map[b_key]["benign_queries"] += row["benign_queries"]

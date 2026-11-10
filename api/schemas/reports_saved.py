@@ -7,6 +7,7 @@ from typing import Any, Optional
 from pydantic import BaseModel, Field
 
 from reporting.report_schemas import ReportKind, ReportStatus, SavedReportDetail, SavedReportSummary
+from reporting.schemas import CanonicalVerdict
 
 
 class ReportCreateRequest(BaseModel):
@@ -21,8 +22,8 @@ class ReportCreateRequest(BaseModel):
 
 
 class ReportReviewRequest(BaseModel):
-    status: ReportStatus
-    verdict: Optional[str] = None
+    status: Optional[ReportStatus] = None
+    verdict: Optional[CanonicalVerdict] = None
     conclusion: Optional[str] = None
 
 

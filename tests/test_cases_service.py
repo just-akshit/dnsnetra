@@ -109,13 +109,17 @@ class FakeRepository:
         self.calls.append(("update_with_event", fields, kind, metadata))
         return self.case
 
+    def update_with_events(self, public_id, fields, *, actor_id, events):
+        self.calls.append(("update_with_events", fields, events))
+        return self.case
+
     def link_report_with_event(self, case_id, report_id, linked_by, *,
                                actor_id, metadata=None):
         self.calls.append(("link_report_with_event", report_id, metadata))
         return True
 
 
-def test_update_without_status_change_keeps_timestamps():
+def test_priority_change_appends_an_event_without_status_change():
     case = _case(status="resolved")
     repository = FakeRepository(case)
 
@@ -124,7 +128,10 @@ def test_update_without_status_change_keeps_timestamps():
         payload={"priority": "high"},
     )
 
-    assert repository.calls == [("update", {"priority": "high"})]
+    (call, fields, events), = repository.calls
+    assert call == "update_with_events"
+    assert fields == {"priority": "high"}
+    assert events == [("priority_changed", {"from": "medium", "to": "high"})]
 
 
 def test_reopening_clears_resolution_and_close_timestamps():
@@ -137,16 +144,18 @@ def test_reopening_clears_resolution_and_close_timestamps():
         payload={"status": "investigating"},
     )
 
-    (call, fields, kind, metadata), = repository.calls
-    assert call == "update_with_event"
+    (call, fields, events), = repository.calls
+    assert call == "update_with_events"
     assert fields == {
         "status": "investigating",
         "closed_at": None,
         "resolved_by": None,
         "resolved_at": None,
     }
-    assert kind == "status_changed"
-    assert metadata == {"from": "closed", "to": "investigating", "resolution": None}
+    assert events == [(
+        "status_changed",
+        {"from": "closed", "to": "investigating", "resolution": None},
+    )]
 
 
 def test_create_rejects_unknown_entity_type():
@@ -179,3 +188,39 @@ def test_link_report_uses_atomic_repository_call():
     assert repository.calls == [
         ("link_report_with_event", 9, {"report_public_id": "RPT-2026-000001"}),
     ]
+
+
+def test_assignment_change_appends_an_assigned_event():
+    case = _case(assigned_to=None)
+    repository = FakeRepository(case)
+
+    CaseService(repository).update(
+        case.public_id, actor_id=2, can_manage=True,
+        payload={"assigned_to": 9},
+    )
+
+    (call, fields, events), = repository.calls
+    assert call == "update_with_events"
+    assert fields == {"assigned_to": 9}
+    assert events == [("assigned", {"from": None, "to": 9})]
+
+
+def test_resolving_appends_status_and_resolution_events():
+    case = _case(status="investigating")
+    repository = FakeRepository(case)
+
+    CaseService(repository).update(
+        case.public_id, actor_id=2, can_manage=True,
+        payload={"status": "resolved", "resolution": "true_positive"},
+    )
+
+    (call, fields, events), = repository.calls
+    assert call == "update_with_events"
+    assert fields["status"] == "resolved"
+    assert fields["resolved_by"] == 2
+    assert ("status_changed", {
+        "from": "investigating", "to": "resolved", "resolution": "true_positive",
+    }) in events
+    assert ("resolution_set", {
+        "from": None, "to": "true_positive",
+    }) in events

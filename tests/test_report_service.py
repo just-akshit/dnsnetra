@@ -2,6 +2,8 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from reporting.report_service import ReportService
 from time_engine import InvalidTimeRangeError, format_iso8601_utc
 
@@ -36,7 +38,16 @@ class _FakeReporting:
             model_dump=lambda mode="json": {"total_queries": 0}
         )
 
+    def get_entity_summary(self, entity_type, value, **kwargs):
+        return SimpleNamespace(
+            total_queries=0,
+            model_dump=lambda mode="json": {"total_queries": 0},
+        )
+
     def get_timeseries(self, **kwargs):
+        return SimpleNamespace(buckets=[])
+
+    def get_entity_timeseries(self, entity_type, value, **kwargs):
         return SimpleNamespace(buckets=[])
 
     def get_queries(self, **kwargs):
@@ -89,7 +100,7 @@ class _RecordingReporting(_FakeReporting):
     def __init__(self):
         self.timeseries_kwargs = {}
 
-    def get_timeseries(self, **kwargs):
+    def get_entity_timeseries(self, entity_type, value, **kwargs):
         self.timeseries_kwargs = kwargs
         return SimpleNamespace(
             buckets=[SimpleNamespace(model_dump=lambda mode="json": {"timestamp": "b1"})]
@@ -97,7 +108,7 @@ class _RecordingReporting(_FakeReporting):
 
 
 class _AllTimeRaisingReporting(_FakeReporting):
-    def get_timeseries(self, **kwargs):
+    def get_entity_timeseries(self, entity_type, value, **kwargs):
         raise InvalidTimeRangeError("All-time timeseries is not permitted.")
 
 
@@ -189,3 +200,150 @@ def test_create_normalizes_filters_and_reuses_one_resolved_window():
         repository.created["window_end"]
     )
 
+
+
+class _ManyQueriesReporting(_FakeReporting):
+    """Return more events than the dossier's 25-row preview would."""
+
+    def __init__(self, count=600):
+        self.count = count
+        self.query_kwargs = None
+
+    def get_queries(self, **kwargs):
+        self.query_kwargs = kwargs
+        limit = kwargs.get("limit", self.count)
+        items = [
+            SimpleNamespace(
+                model_dump=lambda mode="json", i=i: {"id": i, "domain": "example.com"}
+            )
+            for i in range(min(self.count, limit))
+        ]
+        return SimpleNamespace(total=self.count, items=items)
+
+
+def test_entity_snapshot_captures_up_to_500_recent_queries():
+    reporting = _ManyQueriesReporting(count=600)
+    service = ReportService(
+        investigation_service=_FakeInvestigation(),
+        reporting_service=reporting,
+    )
+
+    snapshot = service.build_snapshot(
+        kind="entity_domain", entity="example.com", window="7d",
+        start_time=None, end_time=None, filters={},
+    )
+
+    assert reporting.query_kwargs["domain"] == "example.com"
+    assert reporting.query_kwargs["limit"] == 500
+    assert reporting.query_kwargs["offset"] == 0
+    assert len(snapshot["dossier"]["recent_queries"]) == 500
+
+
+class _EntityScopedReporting(_FakeReporting):
+    def __init__(self, total=7, raise_timeseries=False):
+        self.total = total
+        self.raise_timeseries = raise_timeseries
+        self.summary_args = None
+        self.timeseries_args = None
+
+    def get_summary(self, **kwargs):
+        raise AssertionError("network-wide summary must not be used")
+
+    def get_entity_summary(self, entity_type, value, **kwargs):
+        self.summary_args = (entity_type, value, kwargs)
+        return SimpleNamespace(
+            total_queries=self.total,
+            model_dump=lambda mode="json": {"total_queries": self.total},
+        )
+
+    def get_entity_timeseries(self, entity_type, value, **kwargs):
+        self.timeseries_args = (entity_type, value, kwargs)
+        if self.raise_timeseries:
+            raise InvalidTimeRangeError("All-time timeseries is not permitted.")
+        return SimpleNamespace(
+            buckets=[SimpleNamespace(model_dump=lambda mode="json": {"total_queries": self.total})]
+        )
+
+
+def test_entity_snapshot_uses_entity_scoped_summary_and_timeline():
+    reporting = _EntityScopedReporting(total=7)
+    service = ReportService(
+        investigation_service=_FakeInvestigation(),
+        reporting_service=reporting,
+    )
+
+    snapshot = service.build_snapshot(
+        kind="entity_domain", entity="example.com", window="7d",
+        start_time=None, end_time=None, filters={},
+    )
+
+    assert snapshot["row_count"] == 7
+    assert snapshot["summary"]["total_queries"] == 7
+    assert len(snapshot["timeline"]) == 1
+    assert reporting.summary_args[0:2] == ("domain", "example.com")
+    assert reporting.timeseries_args[0:2] == ("domain", "example.com")
+
+
+def test_all_time_entity_snapshot_stays_entity_scoped_without_timeline():
+    reporting = _EntityScopedReporting(total=5, raise_timeseries=True)
+    service = ReportService(
+        investigation_service=_FakeInvestigation(),
+        reporting_service=reporting,
+    )
+
+    snapshot = service.build_snapshot(
+        kind="entity_client", entity="192.0.2.1", window=None,
+        start_time=None, end_time=None, filters={},
+    )
+
+    assert snapshot["row_count"] == 5
+    assert snapshot["summary"]["total_queries"] == 5
+    assert snapshot["timeline"] == []
+    assert snapshot["provenance"]["timeline_available"] is False
+    assert reporting.summary_args[0:2] == ("client", "192.0.2.1")
+
+
+def test_query_set_create_requires_a_window_or_filter():
+    service = ReportService(
+        repository=_FakeRepository(), reporting_service=_FakeReporting(),
+    )
+
+    with pytest.raises(ValueError):
+        service.create(
+            kind="query_set", entity=None, window=None, start_time=None,
+            end_time=None, filters={}, title=None, user_id=1,
+        )
+
+
+def test_create_canonicalizes_domain_entity():
+    repository = _FakeRepository()
+    service = ReportService(
+        repository=repository,
+        investigation_service=_FakeInvestigation(),
+        reporting_service=_FakeReporting(),
+    )
+
+    service.create(
+        kind="entity_domain", entity="EXAMPLE.COM.", window="24h",
+        start_time=None, end_time=None, filters={}, title=None, user_id=1,
+    )
+
+    assert repository.created["entity_value"] == "example.com"
+    assert repository.created["snapshot"]["entity"]["value"] == "example.com"
+
+
+def test_create_canonicalizes_client_ip_entity():
+    repository = _FakeRepository()
+    service = ReportService(
+        repository=repository,
+        investigation_service=_FakeInvestigation(),
+        reporting_service=_FakeReporting(),
+    )
+
+    service.create(
+        kind="entity_client", entity="2001:0db8::0001", window="24h",
+        start_time=None, end_time=None, filters={}, title=None, user_id=1,
+    )
+
+    assert repository.created["entity_value"] == "2001:db8::1"
+    assert repository.created["snapshot"]["entity"]["value"] == "2001:db8::1"

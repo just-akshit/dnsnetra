@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import SavedReportsPage from "@/app/(dashboard)/reports/saved/page"
@@ -41,5 +41,23 @@ describe("SavedReportsPage", () => {
     })
     render(<SavedReportsPage />)
     expect(await screen.findByText("No saved reports yet.")).toBeInTheDocument()
+  })
+
+  it("shows an inline error with retry instead of an empty state", async () => {
+    const spy = vi
+      .spyOn(dnsnetraApi, "listSavedReports")
+      .mockRejectedValue(new Error("API error (500): boom"))
+    render(<SavedReportsPage />)
+
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent("API error (500): boom")
+    const retry = screen.getByRole("button", { name: /retry/i })
+    expect(retry).toBeInTheDocument()
+    expect(screen.queryByText("No saved reports yet.")).not.toBeInTheDocument()
+
+    spy.mockResolvedValueOnce({ total: 0, limit: 50, offset: 0, items: [] })
+    fireEvent.click(retry)
+    expect(await screen.findByText("No saved reports yet.")).toBeInTheDocument()
+    expect(spy).toHaveBeenCalledTimes(2)
   })
 })

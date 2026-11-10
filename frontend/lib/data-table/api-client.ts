@@ -752,13 +752,17 @@ export const dnsnetraApi = {
     const url = new URL(`/api/v1/reports/saved/${encodeURIComponent(publicId)}/export`, currentApiBase)
     url.searchParams.set("format", format)
     const res = await fetch(url.toString(), { method: "POST", credentials: "include", cache: "no-store" })
+    if (res.status === 401) redirectToLogin()
     if (!res.ok) throw new ApiError(res.status, `Export failed (${res.status})`)
     const blob = await res.blob()
+    const downloadUrl = URL.createObjectURL(blob)
     const link = document.createElement("a")
-    link.href = URL.createObjectURL(blob)
+    link.href = downloadUrl
     link.download = `dnsnetra_${publicId}.${format}`
+    document.body.appendChild(link)
     link.click()
-    URL.revokeObjectURL(link.href)
+    link.remove()
+    URL.revokeObjectURL(downloadUrl)
   },
 
   /** Get complete unified dashboard data */

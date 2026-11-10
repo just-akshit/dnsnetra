@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -10,17 +9,38 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { dnsnetraApi } from "@/lib/data-table/api-client"
 import type { SavedReportSummary } from "@/lib/reporting/types"
 
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : "Failed to load saved reports."
+}
+
 export default function SavedReportsPage() {
   const [items, setItems] = React.useState<SavedReportSummary[]>([])
   const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState<string | null>(null)
+
+  const fetchReports = React.useCallback(
+    () => dnsnetraApi.listSavedReports({ limit: 50 }),
+    []
+  )
 
   React.useEffect(() => {
-    dnsnetraApi
-      .listSavedReports({ limit: 50 })
-      .then((res) => setItems(res.items))
-      .catch(() => toast.error("Failed to load saved reports."))
+    fetchReports()
+      .then((res) => {
+        setItems(res.items)
+        setError(null)
+      })
+      .catch((err: unknown) => setError(errorMessage(err)))
       .finally(() => setLoading(false))
-  }, [])
+  }, [fetchReports])
+
+  const handleRetry = () => {
+    setLoading(true)
+    setError(null)
+    fetchReports()
+      .then((res) => setItems(res.items))
+      .catch((err: unknown) => setError(errorMessage(err)))
+      .finally(() => setLoading(false))
+  }
 
   return (
     <div className="flex flex-col gap-4 p-4 lg:p-6">
@@ -43,6 +63,15 @@ export default function SavedReportsPage() {
         <CardContent className="p-0">
           {loading ? (
             <p className="p-4 text-sm text-muted-foreground">Loading reports…</p>
+          ) : error ? (
+            <div className="flex flex-col items-start gap-2 p-4">
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+              <Button variant="outline" size="sm" onClick={handleRetry}>
+                Retry
+              </Button>
+            </div>
           ) : items.length === 0 ? (
             <p className="p-4 text-sm text-muted-foreground">No saved reports yet.</p>
           ) : (

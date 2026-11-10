@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 
 from api.main import app
 from api.rate_limiter import reset_rate_limits
+from investigation.live.models import IndicatorVerdict, LiveIntelReport
 from reporting.schemas import CanonicalVerdict
 from tests.auth_testkit import TEST_PASSWORD, issue_captcha, login
 
@@ -371,8 +372,24 @@ def test_reports_flagged_compatibility(auth_headers):
         assert item["final_label"] == "Review Needed"
 
 
-def test_reports_entity_endpoint(auth_headers):
+def test_reports_entity_endpoint(auth_headers, monkeypatch):
     """GET /api/v1/reports/entity returns 200 for valid domain or client, including unseen entities."""
+    from api.routes import reports as report_routes
+
+    class _FakeLive:
+        def lookup_domain(self, value, refresh=False):
+            return LiveIntelReport(
+                indicator=value,
+                kind="domain",
+                verdict=IndicatorVerdict(state="unknown", reasons=["no data"]),
+                checked_at="2026-11-10T00:00:00Z",
+            )
+
+        def lookup_ip(self, value, refresh=False):
+            return None
+
+    monkeypatch.setattr(report_routes, "LiveIntelService", _FakeLive)
+
     # 1. Look up an existing domain
     res_d = client.get("/api/v1/reports/entity?entity=google.com", headers=auth_headers)
     assert res_d.status_code == 200
@@ -396,12 +413,13 @@ def test_reports_entity_endpoint(auth_headers):
     # 3. Missing entity parameter returns 422
     assert client.get("/api/v1/reports/entity", headers=auth_headers).status_code == 422
 
-    # 4. Valid but unseen domain returns a live-only dossier instead of 404
+    # 4. Valid but unseen domain returns a live-only dossier (live intel stubbed) instead of 404
     res_missing = client.get("/api/v1/reports/entity?entity=nonexistent-entity-987654321.com", headers=auth_headers)
     assert res_missing.status_code == 200
     missing = res_missing.json()
     assert missing["entity_type"] == "domain"
     assert missing["domain_dossier"]["observed_in_network"] is False
+    assert missing["domain_dossier"]["live_intel"] is not None
 
 
 def test_reports_export_csv_endpoint(auth_headers):

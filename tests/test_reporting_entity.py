@@ -28,7 +28,7 @@ def test_unseen_domain_returns_a_live_dossier(monkeypatch, analyst_headers):
     monkeypatch.setattr(
         report_routes,
         "InvestigationService",
-        lambda: InvestigationService(live_intel_service=_FakeLive()),
+        lambda **_: InvestigationService(live_intel_service=_FakeLive()),
     )
 
     res = client.get(
@@ -40,6 +40,7 @@ def test_unseen_domain_returns_a_live_dossier(monkeypatch, analyst_headers):
     body = res.json()
     assert body["entity_type"] == "domain"
     assert body["domain_dossier"]["observed_in_network"] is False
+    assert body["domain_dossier"]["live_intel"] is not None
 
 
 def test_support_cannot_read_entity_dossiers(support_headers):
@@ -47,5 +48,14 @@ def test_support_cannot_read_entity_dossiers(support_headers):
         "/api/v1/reports/entity",
         headers=support_headers,
         params={"entity": "example.com", "entity_type": "domain"},
+    )
+    assert res.status_code == 403
+
+
+def test_support_cannot_read_client_dossiers(support_headers):
+    res = client.get(
+        "/api/v1/reports/entity",
+        headers=support_headers,
+        params={"entity": "203.0.113.10"},
     )
     assert res.status_code == 403

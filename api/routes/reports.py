@@ -35,6 +35,7 @@ from api.schemas import (
     TimeseriesBucketResponse,
     TimeseriesResponse,
 )
+from investigation.live.service import LiveIntelService
 from investigation.schemas import (
     EntityNotFoundError,
     InvalidEntityError,
@@ -489,8 +490,6 @@ def get_report_entity(
             detail="Entity identifier cannot be empty.",
         )
 
-    inv_service = InvestigationService()
-
     eff_type = entity_type.strip().lower() if entity_type and entity_type.strip() else None
     if eff_type and eff_type not in ("domain", "client"):
         raise HTTPException(
@@ -511,6 +510,8 @@ def get_report_entity(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Access denied: role '{current_user.get('role')}' lacks permission '{required}'",
         )
+
+    inv_service = InvestigationService(live_intel_service=LiveIntelService())
 
     if eff_type == "client":
         try:

@@ -65,5 +65,6 @@ export interface CaseList {
   total: number
   limit: number
   offset: number
+  has_more: boolean
   items: CaseSummary[]
 }

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import ReportDetailPage from "@/app/(dashboard)/reports/saved/[public_id]/page"
@@ -57,5 +57,42 @@ describe("report to case", () => {
       entity_value: "example.com",
       report_id: "RPT-2026-000001",
     })
+    expect(
+      await screen.findByRole("link", { name: "CASE-2026-000001" })
+    ).toHaveAttribute("href", "/cases/CASE-2026-000001")
+  })
+
+  it("disables Open case while the request is pending", async () => {
+    vi.spyOn(dnsnetraApi, "getSavedReport").mockResolvedValue(report as any)
+    let resolveCase!: (value: any) => void
+    vi.spyOn(dnsnetraApi, "createCase").mockReturnValue(
+      new Promise((resolve) => {
+        resolveCase = resolve
+      })
+    )
+
+    render(<ReportDetailPage />)
+    const button = await screen.findByRole("button", { name: "Open case" })
+    fireEvent.click(button)
+
+    expect(button).toBeDisabled()
+    expect(button).toHaveAttribute("aria-busy", "true")
+
+    resolveCase({
+      public_id: "CASE-2026-000001",
+      title: "Investigate example.com",
+      status: "open",
+      priority: "medium",
+      entity_type: "domain",
+      entity_value: "example.com",
+      assigned_to: null,
+      created_by: 1,
+      resolution: null,
+      created_at: "2026-11-10T00:00:00Z",
+      updated_at: "2026-11-10T00:00:00Z",
+      events: [],
+      reports: ["RPT-2026-000001"],
+    })
+    await waitFor(() => expect(button).not.toBeDisabled())
   })
 })

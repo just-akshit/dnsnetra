@@ -33,6 +33,7 @@ function DailyReviewContent() {
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
   const [activeEntity, setActiveEntity] = React.useState<EntityIdentifier | null>(null)
+  const [creatingCase, setCreatingCase] = React.useState(false)
 
   const currentTab = tab || "all"
   const tabStatus = currentTab !== "all" ? currentTab : undefined
@@ -124,19 +125,26 @@ function DailyReviewContent() {
     [handleRetry]
   )
 
-  const handleCreateCase = React.useCallback(async (domain: string) => {
-    try {
-      const created = await dnsnetraApi.createCase({
-        title: `Review ${domain}`,
-        priority: "medium",
-        entity_type: "domain",
-        entity_value: domain,
-      })
-      toast.success(`Case ${created.public_id} opened.`)
-    } catch {
-      toast.error("Could not open a case.")
-    }
-  }, [])
+  const handleCreateCase = React.useCallback(
+    async (domain: string) => {
+      if (creatingCase) return
+      setCreatingCase(true)
+      try {
+        const created = await dnsnetraApi.createCase({
+          title: `Review ${domain}`,
+          priority: "medium",
+          entity_type: "domain",
+          entity_value: domain,
+        })
+        toast.success(`Case ${created.public_id} opened.`)
+      } catch {
+        toast.error("Could not open a case.")
+      } finally {
+        setCreatingCase(false)
+      }
+    },
+    [creatingCase]
+  )
 
   const columns = React.useMemo(
     () =>
@@ -145,8 +153,9 @@ function DailyReviewContent() {
         onPromoteClean: handlePromoteClean,
         onPromoteMalicious: handlePromoteMalicious,
         onCreateCase: handleCreateCase,
+        isCreatingCase: creatingCase,
       }),
-    [handlePromoteClean, handlePromoteMalicious, handleCreateCase]
+    [handlePromoteClean, handlePromoteMalicious, handleCreateCase, creatingCase]
   )
 
   return (

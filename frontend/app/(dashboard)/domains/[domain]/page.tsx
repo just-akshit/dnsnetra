@@ -37,6 +37,7 @@ export default function DomainProfilePage() {
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
   const [notFound, setNotFound] = React.useState(false)
+  const [creating, setCreating] = React.useState(false)
 
   const loadData = React.useCallback(async (forceRefresh = false) => {
     if (!domain) return
@@ -172,7 +173,11 @@ export default function DomainProfilePage() {
           <Button
             variant="outline"
             size="sm"
+            disabled={creating}
+            aria-busy={creating}
             onClick={async () => {
+              if (creating) return
+              setCreating(true)
               try {
                 const report = await dnsnetraApi.createSavedReport({
                   kind: "entity_domain",
@@ -180,9 +185,16 @@ export default function DomainProfilePage() {
                   window: "7d",
                   title: `${domain} — 7 day review`,
                 })
-                toast.success(`Report ${report.public_id} created.`)
+                toast.success(`Report ${report.public_id} created.`, {
+                  action: {
+                    label: "Open",
+                    onClick: () => router.push(`/reports/saved/${report.public_id}`),
+                  },
+                })
               } catch {
                 toast.error("Could not create a report.")
+              } finally {
+                setCreating(false)
               }
             }}
           >

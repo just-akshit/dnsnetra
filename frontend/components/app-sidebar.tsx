@@ -29,7 +29,15 @@ import {
   SettingsIcon,
   ShieldIcon,
   LogOutIcon,
+  FileStackIcon,
 } from "lucide-react"
+
+type NavItem = {
+  title: string
+  url: string
+  icon: React.ReactNode
+  exact?: boolean
+}
 
 const navOverview = [
   {
@@ -39,11 +47,12 @@ const navOverview = [
   },
 ]
 
-const navAnalysis = [
+const navAnalysis: NavItem[] = [
   {
     title: "Reports",
     url: "/reports",
     icon: <FileTextIcon />,
+    exact: true,
   },
   {
     title: "Domains",
@@ -68,7 +77,7 @@ const navAnalysis = [
   {
     title: "Saved Reports",
     url: "/reports/saved",
-    icon: <FileTextIcon />,
+    icon: <FileStackIcon />,
   },
   {
     title: "Cases",
@@ -150,8 +159,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     isActive={
-                      pathname === item.url ||
-                      (item.url !== "/dashboard" && pathname.startsWith(item.url + "/"))
+                      item.exact
+                        ? pathname === item.url
+                        : pathname === item.url ||
+                          (item.url !== "/dashboard" && pathname.startsWith(item.url + "/"))
                     }
                     tooltip={item.title}
                     render={<Link href={item.url} />}

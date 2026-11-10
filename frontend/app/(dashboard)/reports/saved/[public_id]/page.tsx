@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { useParams } from "next/navigation"
 import { toast } from "sonner"
 
@@ -28,6 +29,7 @@ export default function ReportDetailPage() {
   const [error, setError] = React.useState<string | null>(null)
   const [conclusion, setConclusion] = React.useState("")
   const [saving, setSaving] = React.useState(false)
+  const [creating, setCreating] = React.useState(false)
   const [exporting, setExporting] = React.useState<"csv" | "xlsx" | null>(null)
 
   const loadReport = React.useCallback(
@@ -115,7 +117,11 @@ export default function ReportDetailPage() {
           <Button
             variant="outline"
             size="sm"
+            disabled={creating}
+            aria-busy={creating}
             onClick={async () => {
+              if (creating) return
+              setCreating(true)
               try {
                 const created = await dnsnetraApi.createCase({
                   title: `Investigate ${report.entity_value ?? report.title}`,
@@ -124,9 +130,14 @@ export default function ReportDetailPage() {
                   entity_value: report.entity_value ?? undefined,
                   report_id: report.public_id,
                 })
+                setReport((prev) =>
+                  prev ? { ...prev, case_public_id: created.public_id } : prev
+                )
                 toast.success(`Case ${created.public_id} opened.`)
               } catch {
                 toast.error("Could not open a case.")
+              } finally {
+                setCreating(false)
               }
             }}
           >
@@ -149,6 +160,14 @@ export default function ReportDetailPage() {
             Export XLSX
           </Button>
           <Badge variant="outline">{report.status}</Badge>
+          {report.case_public_id && (
+            <Link
+              href={`/cases/${encodeURIComponent(report.case_public_id)}`}
+              className="font-mono text-[10px] text-primary hover:underline"
+            >
+              {report.case_public_id}
+            </Link>
+          )}
           {report.reviewed_at && (
             <span className="font-mono text-[10px] text-muted-foreground">
               {report.reviewed_at}

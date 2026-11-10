@@ -22,6 +22,7 @@ export interface DailyReviewColumnOptions {
   onPromoteClean?: (domain: string) => void
   onPromoteMalicious?: (domain: string) => void
   onCreateCase?: (domain: string) => void
+  isCreatingCase?: boolean
 }
 
 export function createDailyReviewColumns(options: DailyReviewColumnOptions = {}) {
@@ -161,6 +162,7 @@ export function createDailyReviewColumns(options: DailyReviewColumnOptions = {})
               {
                 id: "create-case",
                 label: "Create Case",
+                disabled: options.isCreatingCase,
                 onClick: () => options.onCreateCase?.(item.domain),
               },
               {

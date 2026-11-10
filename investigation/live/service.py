@@ -9,6 +9,13 @@ Orchestrates:
   provider stack, key rotation, and rate-limit handling).
 * Live DNS resolution and RDAP registration for domains.
 * A short in-process TTL cache so a page refresh does not burn API quota.
+* Single-flight per indicator: concurrent lookups of the same domain/IP share
+  one upstream call, so two analysts opening the same page spend one quota unit.
+
+The cache and single-flight table are process-local. Scaling past one
+``uvicorn`` worker needs a shared store (Redis ``SET NX`` on the indicator key,
+or a Postgres advisory lock plus the cached row); until then the deploy runs
+``--workers 1``.
 
 The service never raises because a provider failed — it degrades to an
 ``unknown`` verdict with per-provider status instead.
@@ -49,8 +56,24 @@ DEFAULT_ENRICHMENT_DEADLINE_SECONDS = 2.0
 # Bounded so a long-running process cannot grow one cache entry per searched
 # indicator forever.
 _CACHE_MAX_ENTRIES = 2000
+# A follower never waits forever on a stuck build; past this it does the work
+# itself. ponytail: bound, not cancellation — a truly stuck leader degrades to
+# duplicate upstream work instead of a process-wide hang.
+_INFLIGHT_TIMEOUT_SECONDS = 30
 _CACHE: "OrderedDict[str, Tuple[float, LiveIntelReport]]" = OrderedDict()
 _CACHE_LOCK = threading.Lock()
+
+
+class _Inflight:
+    """One in-progress build per indicator; followers wait for the leader."""
+
+    def __init__(self) -> None:
+        self.done = threading.Event()
+        self.report: Optional[LiveIntelReport] = None
+        self.error: Optional[BaseException] = None
+
+
+_INFLIGHT: Dict[str, _Inflight] = {}
 
 _DEFAULT_PROVIDERS: Optional[List[Any]] = None
 _DEFAULT_PROVIDERS_LOCK = threading.Lock()
@@ -88,6 +111,12 @@ def reset_live_intel_cache() -> None:
     global _DEFAULT_PROVIDERS
     with _CACHE_LOCK:
         _CACHE.clear()
+        # Wake anyone waiting on an in-flight build so a reset cannot strand
+        # them on an event that will never fire.
+        for pending in _INFLIGHT.values():
+            pending.error = RuntimeError("live intelligence cache reset")
+            pending.done.set()
+        _INFLIGHT.clear()
     with _DEFAULT_PROVIDERS_LOCK:
         _DEFAULT_PROVIDERS = None
 
@@ -146,22 +175,55 @@ class LiveIntelService:
     # Cache
     # ------------------------------------------------------------------
     def _cached(self, key: str, builder: Any, refresh: bool = False) -> LiveIntelReport:
-        now = time.monotonic()
+        started_at = time.monotonic()
         with _CACHE_LOCK:
             hit = _CACHE.get(key)
-            if hit is not None and now < hit[0]:
-                if not refresh:
+            if hit is not None:
+                if started_at < hit[0] and not refresh:
                     _CACHE.move_to_end(key)
                     return hit[1]
-                del _CACHE[key]
+                if refresh:
+                    del _CACHE[key]
 
-        report = builder()
+            pending = _INFLIGHT.get(key)
+            if pending is None:
+                pending = _Inflight()
+                _INFLIGHT[key] = pending
+                leader = True
+            else:
+                leader = False
 
+        if not leader:
+            if pending.done.wait(_INFLIGHT_TIMEOUT_SECONDS):
+                if pending.error is not None:
+                    raise pending.error
+                return pending.report  # type: ignore[return-value]
+            # Leader is stuck past the bound; answer this request directly
+            # rather than blocking every caller behind it.
+            return builder()
+
+        try:
+            report = builder()
+        except BaseException as exc:
+            # Followers get a normal exception, never a KeyboardInterrupt or
+            # SystemExit raised in another thread.
+            shared = exc if isinstance(exc, Exception) else RuntimeError("live lookup interrupted")
+            with _CACHE_LOCK:
+                pending.error = shared
+                _INFLIGHT.pop(key, None)
+                pending.done.set()
+            raise
+
+        # Publish and release under the same lock so a refresh request cannot
+        # slip in between the cache write and the flight teardown.
         with _CACHE_LOCK:
-            _CACHE[key] = (now + self._cache_ttl, report)
+            _CACHE[key] = (started_at + self._cache_ttl, report)
             _CACHE.move_to_end(key)
             while len(_CACHE) > _CACHE_MAX_ENTRIES:
                 _CACHE.popitem(last=False)
+            pending.report = report
+            _INFLIGHT.pop(key, None)
+            pending.done.set()
         return report
 
     # ------------------------------------------------------------------

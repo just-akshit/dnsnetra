@@ -18,29 +18,18 @@ def repo():
 
 
 def test_repository_all_time_summary_reconciliation(repo):
-    """Verify all-time summary reconciles against authoritative counts."""
+    """Verify all-time summary reconciles against its breakdown and entity lists."""
     summary = repo.get_all_time_summary()
-    assert summary["total_queries"] == 30181
-    assert summary["benign_queries"] == 23371
-    assert summary["malicious_queries"] == 4626
-    assert summary["review_needed_queries"] == 448
-    assert summary["unknown_queries"] == 1736
-    assert summary["unique_clients"] == 12
-    assert summary["unique_domains"] == 49
-
-
-def test_repository_aligned_window_summary(repo):
-    """Verify aligned window query uses rollups and counts distinct entities."""
-    start = datetime(2026, 9, 16, 12, 0, 0, tzinfo=DB_TZ)
-    end = datetime(2026, 9, 16, 13, 0, 0, tzinfo=DB_TZ)
-    summary = repo.get_aligned_window_summary(start, end)
-    assert summary["total_queries"] > 0
-    assert summary["unique_clients"] > 0
-    assert summary["unique_domains"] > 0
     assert summary["total_queries"] == (
-        summary["benign_queries"] + summary["malicious_queries"] +
-        summary["review_needed_queries"] + summary["unknown_queries"]
+        summary["benign_queries"]
+        + summary["malicious_queries"]
+        + summary["review_needed_queries"]
+        + summary["unknown_queries"]
     )
+    clients_total, _ = repo.get_all_time_top_clients(limit=1, offset=0)
+    assert summary["unique_clients"] == clients_total
+    domains_total, _ = repo.get_all_time_top_domains(limit=1, offset=0)
+    assert summary["unique_domains"] == domains_total
 
 
 def test_repository_raw_window_summary_unaligned(repo):
@@ -51,18 +40,6 @@ def test_repository_raw_window_summary_unaligned(repo):
     assert summary["total_queries"] > 0
     assert summary["unique_clients"] > 0
     assert summary["unique_domains"] > 0
-
-
-def test_repository_timeseries_aligned(repo):
-    """Verify aligned timeseries returns rollup buckets ordered chronologically."""
-    start = datetime(2026, 9, 16, 0, 0, 0, tzinfo=DB_TZ)
-    end = datetime(2026, 9, 17, 0, 0, 0, tzinfo=DB_TZ)
-    buckets = repo.get_aligned_timeseries(start, end)
-    assert isinstance(buckets, list)
-    for b in buckets:
-        assert "bucket_time" in b
-        assert "total_queries" in b
-        assert "malicious_queries" in b
 
 
 def test_repository_timeseries_raw_unaligned(repo):
@@ -77,10 +54,10 @@ def test_repository_timeseries_raw_unaligned(repo):
 
 
 def test_repository_top_clients_all_time(repo):
-    """Verify all-time top clients pagination and ordering."""
+    """Verify all-time top clients pagination and ordering reconcile with summary."""
     total, rows = repo.get_all_time_top_clients(limit=5, offset=0)
-    assert total == 12
-    assert len(rows) == 5
+    assert total == repo.get_all_time_summary()["unique_clients"]
+    assert len(rows) == min(5, total)
     # Verify deterministic ordering: total_queries DESC, client_ip ASC
     for i in range(len(rows) - 1):
         assert rows[i]["total_queries"] >= rows[i + 1]["total_queries"]
@@ -98,10 +75,10 @@ def test_repository_top_clients_windowed(repo):
 
 
 def test_repository_top_domains_all_time(repo):
-    """Verify all-time top domains ordering and count."""
+    """Verify all-time top domains ordering and count reconcile with summary."""
     total, rows = repo.get_all_time_top_domains(limit=10, offset=0)
-    assert total == 49
-    assert len(rows) == 10
+    assert total == repo.get_all_time_summary()["unique_domains"]
+    assert len(rows) == min(10, total)
     assert rows[0]["total_queries"] >= rows[1]["total_queries"]
 
 

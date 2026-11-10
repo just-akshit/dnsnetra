@@ -422,9 +422,12 @@ def test_25_domains_verdict_filter_unknown(service):
     """25. verdict_filter = Unknown selects only Unknown events (seeded)."""
     with _seed_event(verdict="Unknown"):
         res = service.get_top_domains(
-            limit=10, offset=0, verdict_filter=CanonicalVerdict.UNKNOWN
+            limit=10,
+            offset=0,
+            verdict_filter=CanonicalVerdict.UNKNOWN,
+            search=SEED_DOMAIN,
         )
-        assert res.total >= 1
+        assert res.total == 1
         assert any(item.domain == SEED_DOMAIN for item in res.items)
         for item in res.items:
             assert item.latest_verdict == "Unknown"

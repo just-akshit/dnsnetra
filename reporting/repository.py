@@ -103,45 +103,6 @@ class ReportingRepository:
 
                 return (None, None)
 
-    def get_aligned_window_summary(self, start_time: datetime, end_time: datetime) -> Dict[str, Any]:
-
-        """
-        Retrieves summary for an exact hourly-aligned interval [start_time, end_time).
-        Uses telemetry_hourly_rollup for additive sums and domain_query_history for distinct cardinality.
-        """
-        with self._get_conn() as conn:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute("""
-                    SELECT 
-                        COALESCE(SUM(total_queries), 0) AS total_queries,
-                        COALESCE(SUM(clean_queries), 0) AS benign_queries,
-                        COALESCE(SUM(suspicious_queries), 0) AS review_needed_queries,
-                        COALESCE(SUM(malicious_queries), 0) AS malicious_queries,
-                        COALESCE(SUM(unknown_queries), 0) AS unknown_queries
-                    FROM telemetry_hourly_rollup
-                    WHERE bucket_time >= %s AND bucket_time < %s;
-                """, (start_time, end_time))
-                counts = cur.fetchone() or {}
-
-                cur.execute("""
-                    SELECT 
-                        COUNT(DISTINCT client_ip) AS unique_clients,
-                        COUNT(DISTINCT domain) AS unique_domains
-                    FROM domain_query_history
-                    WHERE timestamp >= %s AND timestamp < %s;
-                """, (start_time, end_time))
-                distincts = cur.fetchone() or {}
-
-                return {
-                    "total_queries": int(counts.get("total_queries") or 0),
-                    "benign_queries": int(counts.get("benign_queries") or 0),
-                    "malicious_queries": int(counts.get("malicious_queries") or 0),
-                    "review_needed_queries": int(counts.get("review_needed_queries") or 0),
-                    "unknown_queries": int(counts.get("unknown_queries") or 0),
-                    "unique_clients": int(distincts.get("unique_clients") or 0),
-                    "unique_domains": int(distincts.get("unique_domains") or 0),
-                }
-
     def get_raw_window_summary(self, start_time: datetime, end_time: datetime) -> Dict[str, Any]:
         """
         Retrieves summary directly from domain_query_history for partial-hour or unaligned windows.
@@ -174,26 +135,6 @@ class ReportingRepository:
     # -----------------------------------------------------------------------
     # 2. Timeseries Queries
     # -----------------------------------------------------------------------
-
-    def get_aligned_timeseries(self, start_time: datetime, end_time: datetime) -> List[Dict[str, Any]]:
-        """
-        Fetches hourly rollup buckets from telemetry_hourly_rollup.
-        """
-        with self._get_conn() as conn:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute("""
-                    SELECT 
-                        bucket_time,
-                        total_queries,
-                        clean_queries AS benign_queries,
-                        malicious_queries,
-                        suspicious_queries AS review_needed_queries,
-                        unknown_queries
-                    FROM telemetry_hourly_rollup
-                    WHERE bucket_time >= %s AND bucket_time < %s
-                    ORDER BY bucket_time ASC;
-                """, (start_time, end_time))
-                return [dict(r) for r in cur.fetchall()]
 
     def get_raw_timeseries(
         self, start_time: datetime, end_time: datetime, width_seconds: int = 3600

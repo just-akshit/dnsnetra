@@ -373,6 +373,77 @@ class ReportingRepository:
     # 4. Top Domains Queries
     # -----------------------------------------------------------------------
 
+    def get_dns_domains(
+        self,
+        limit: int,
+        offset: int,
+        search: Optional[str] = None,
+        sort_by: str = "last_seen",
+        sort_order: str = "desc",
+    ) -> Tuple[int, List[Dict[str, Any]]]:
+        """One row per queried domain with its latest event's client and type."""
+        sort_map = {
+            "domain": "d.domain",
+            "registered_domain": "q.registered_domain",
+            "query_type": "q.query_type",
+            "client_ip": "q.client_ip",
+            "first_seen": "d.first_seen",
+            "last_seen": "d.last_seen",
+            "total_queries": "d.total_queries",
+        }
+        sort_col = sort_map.get(str(sort_by).lower(), "d.last_seen")
+        direction = "ASC" if str(sort_order).lower() == "asc" else "DESC"
+
+        where_clause = ""
+        params: List[Any] = []
+        if search and search.strip():
+            where_clause = "WHERE (domain ILIKE %s OR registered_domain ILIKE %s)"
+            pattern = like_pattern(search)
+            params.extend([pattern, pattern])
+
+        with self._get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    f"SELECT COUNT(DISTINCT domain) FROM domain_query_history {where_clause};",
+                    tuple(params),
+                )
+                total = cur.fetchone()["count"]
+
+                cur.execute(f"""
+                    WITH filtered AS (
+                        SELECT domain, timestamp, client_ip, query_type, registered_domain
+                        FROM domain_query_history
+                        {where_clause}
+                    )
+                    SELECT
+                        d.domain,
+                        COALESCE(q.registered_domain, d.domain) AS registered_domain,
+                        q.query_type,
+                        q.client_ip,
+                        to_char(d.first_seen AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS first_seen,
+                        to_char(d.last_seen AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS last_seen,
+                        d.total_queries
+                    FROM (
+                        SELECT
+                            domain,
+                            MIN(timestamp) AS first_seen,
+                            MAX(timestamp) AS last_seen,
+                            COUNT(*) AS total_queries
+                        FROM filtered
+                        GROUP BY domain
+                    ) d
+                    JOIN LATERAL (
+                        SELECT registered_domain, query_type, client_ip
+                        FROM filtered f
+                        WHERE f.domain = d.domain
+                        ORDER BY f.timestamp DESC
+                        LIMIT 1
+                    ) q ON TRUE
+                    ORDER BY {sort_col} {direction}, d.domain ASC
+                    LIMIT %s OFFSET %s;
+                """, tuple(params + [limit, offset]))
+                return total, [dict(r) for r in cur.fetchall()]
+
     def get_all_time_top_domains(
         self,
         limit: int,

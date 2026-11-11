@@ -24,6 +24,7 @@ from .repository import ReportingRepository
 from .schemas import (
     CanonicalVerdict,
     ClientSummaryItem,
+    DnsDomainItem,
     DomainSummaryItem,
     InvalidTimeRangeError,
     PaginatedResult,
@@ -455,6 +456,36 @@ class ReportingService:
     # -----------------------------------------------------------------------
     # 4. Top Domains
     # -----------------------------------------------------------------------
+
+    def get_dns_domains(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        search: Optional[str] = None,
+        sort_by: str = "last_seen",
+        sort_order: str = "desc",
+    ) -> PaginatedResult[DnsDomainItem]:
+        """One row per queried domain for the DNS page."""
+        if limit < 1 or limit > 1000:
+            raise ReportingValidationError("limit must be between 1 and 1000.")
+        if offset < 0:
+            raise ReportingValidationError("offset must be non-negative.")
+
+        total, rows = self.repository.get_dns_domains(
+            limit=limit,
+            offset=offset,
+            search=search,
+            sort_by=sort_by,
+            sort_order=sort_order,
+        )
+        items = [DnsDomainItem(**r) for r in rows]
+        return PaginatedResult(
+            total=total,
+            limit=limit,
+            offset=offset,
+            has_more=offset + len(items) < total,
+            items=items,
+        )
 
     def get_top_domains(
         self,

@@ -118,6 +118,20 @@ class DomainSummaryItem(BaseModel):
     last_seen: str   # ISO8601 UTC
 
 
+class DnsDomainItem(BaseModel):
+    """One row per queried domain for the DNS page."""
+
+    model_config = ConfigDict(frozen=True)
+
+    domain: str
+    registered_domain: str
+    query_type: str
+    client_ip: Optional[str] = None
+    first_seen: str
+    last_seen: str
+    total_queries: int
+
+
 class QueryEventItem(BaseModel):
     """Authoritative event-level record from domain_query_history."""
     model_config = ConfigDict(frozen=True)

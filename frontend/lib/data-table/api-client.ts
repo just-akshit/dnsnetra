@@ -24,6 +24,16 @@ export interface DomainItem {
   last_seen: string
 }
 
+export interface DnsDomainItem {
+  domain: string
+  registered_domain: string
+  query_type: string
+  client_ip?: string | null
+  first_seen: string
+  last_seen: string
+  total_queries: number
+}
+
 export interface ClientItem {
   client_ip: string
   total_queries: number
@@ -493,6 +503,25 @@ export const dnsnetraApi = {
   /** Get domain detail (lifetime forensic dossier without temporal params) */
   async getDomainDetail(domain: string): Promise<DomainDetail> {
     return apiFetch<DomainDetail>(`/api/v1/domains/${encodeURIComponent(domain)}`)
+  },
+
+  /** One row per queried domain for the DNS page */
+  async getDnsDomains(params: {
+    page?: number
+    pageSize?: number
+    search?: string
+    sort?: string
+    order?: "asc" | "desc"
+  } = {}): Promise<PaginatedResult<DnsDomainItem>> {
+    const page = params.page ?? 1
+    const pageSize = params.pageSize ?? 25
+    return apiFetch<PaginatedResult<DnsDomainItem>>("/api/v1/dns/domains", {
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+      search: params.search,
+      sort: params.sort,
+      order: params.order,
+    })
   },
 
   /** Get authoritative domain investigation dossier (strictly no temporal params) */

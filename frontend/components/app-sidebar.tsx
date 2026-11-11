@@ -30,6 +30,7 @@ import {
   ShieldIcon,
   LogOutIcon,
   FileStackIcon,
+  NetworkIcon,
 } from "lucide-react"
 
 type NavItem = {
@@ -63,6 +64,11 @@ const navAnalysis: NavItem[] = [
     title: "Clients",
     url: "/clients",
     icon: <UsersIcon />,
+  },
+  {
+    title: "DNS",
+    url: "/dns",
+    icon: <NetworkIcon />,
   },
   {
     title: "Queries",

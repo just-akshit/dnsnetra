@@ -36,6 +36,7 @@ from api.routes.cases import router as cases_router
 from api.routes.clients import router as clients_router
 from api.routes.daily_review import router as daily_review_router
 from api.routes.dashboard import router as dashboard_router
+from api.routes.dns import router as dns_router
 from api.routes.domains import router as domains_router
 from api.routes.investigation import router as investigation_router
 from api.routes.reports import router as reports_router
@@ -165,6 +166,7 @@ app.include_router(dashboard_router)
 app.include_router(reports_router)
 app.include_router(reports_saved_router)
 app.include_router(domains_router)
+app.include_router(dns_router)
 app.include_router(clients_router)
 app.include_router(investigation_router)
 app.include_router(status_router)

@@ -3,6 +3,11 @@
  */
 
 export type TimeRangePreset =
+  | "30s"
+  | "1m"
+  | "5m"
+  | "10m"
+  | "15m"
   | "30m"
   | "1h"
   | "6h"
@@ -22,6 +27,11 @@ export interface PresetOption {
 }
 
 export const PRESET_OPTIONS: PresetOption[] = [
+  { id: "30s", label: "Last 30 seconds", durationMinutes: 0.5 },
+  { id: "1m", label: "Last 1 minute", durationMinutes: 1 },
+  { id: "5m", label: "Last 5 minutes", durationMinutes: 5 },
+  { id: "10m", label: "Last 10 minutes", durationMinutes: 10 },
+  { id: "15m", label: "Last 15 minutes", durationMinutes: 15 },
   { id: "30m", label: "Last 30 minutes", durationMinutes: 30 },
   { id: "1h", label: "Last 1 hour", durationMinutes: 60 },
   { id: "6h", label: "Last 6 hours", durationMinutes: 360 },

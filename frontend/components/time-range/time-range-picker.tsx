@@ -89,9 +89,7 @@ export function TimeRangePicker({
     setValidationError(null)
     setStartInput(formatDateTimeInput(start))
 
-    if (end) {
-      setEndInput(formatDateTimeInput(end))
-    }
+    setEndInput(end ? formatDateTimeInput(end) : "")
   }
 
   // Handle manual input changes
@@ -184,7 +182,7 @@ export function TimeRangePicker({
         <div className="border-b border-border/70 px-4 py-2.5 bg-muted/20 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <ClockIcon className="h-3.5 w-3.5" />
-            <span>Custom range: 30m, 1h, 24h, or explicit date range</span>
+            <span>Presets or an explicit UTC date range</span>
           </div>
           {pendingType === "custom" && (
             <button
@@ -242,12 +240,17 @@ export function TimeRangePicker({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Start Datetime */}
             <div className="flex flex-col gap-1">
-              <label className="text-[11px] font-medium text-muted-foreground">
+              <label
+                htmlFor="time-range-start"
+                className="text-[11px] font-medium text-muted-foreground"
+              >
                 Start
               </label>
               <div className="relative flex items-center">
                 <CalendarIcon className="absolute left-2.5 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
                 <input
+                  id="time-range-start"
+                  aria-label="Start"
                   type="text"
                   value={startInput}
                   onChange={(e) => handleStartInputChange(e.target.value)}
@@ -262,12 +265,17 @@ export function TimeRangePicker({
 
             {/* End Datetime */}
             <div className="flex flex-col gap-1">
-              <label className="text-[11px] font-medium text-muted-foreground">
+              <label
+                htmlFor="time-range-end"
+                className="text-[11px] font-medium text-muted-foreground"
+              >
                 End
               </label>
               <div className="relative flex items-center">
                 <CalendarIcon className="absolute left-2.5 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
                 <input
+                  id="time-range-end"
+                  aria-label="End"
                   type="text"
                   value={endInput}
                   onChange={(e) => handleEndInputChange(e.target.value)}
@@ -299,7 +307,7 @@ export function TimeRangePicker({
               size="sm"
               onClick={handleApply}
               disabled={Boolean(validationError)}
-              className="h-8 px-5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-xs"
+              className="h-8 px-5 text-xs font-semibold rounded-lg"
             >
               Apply
             </Button>

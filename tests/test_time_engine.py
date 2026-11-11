@@ -181,6 +181,10 @@ class TestRollingPresets:
     @pytest.mark.parametrize(
         "preset,expected_duration,expected_bucket_label,expected_bucket_sec",
         [
+            ("30s", timedelta(seconds=30), "5s", 5),
+            ("1m", timedelta(minutes=1), "10s", 10),
+            ("5m", timedelta(minutes=5), "30s", 30),
+            ("10m", timedelta(minutes=10), "1m", 60),
             ("15m", timedelta(minutes=15), "1m", 60),
             ("1h", timedelta(hours=1), "5m", 300),
             ("6h", timedelta(hours=6), "15m", 900),

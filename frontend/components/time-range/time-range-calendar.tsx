@@ -104,13 +104,9 @@ export function TimeRangeCalendar({
 
   const handleCellClick = (cellDate: Date) => {
     if (!startDate || (startDate && endDate)) {
-      // First selection of new range: preserve existing start time or default to 00:00
+      // A new range always starts at 00:00; time is edited in the inputs.
       const newStart = new Date(cellDate.getTime())
-      if (startDate) {
-        newStart.setUTCHours(startDate.getUTCHours(), startDate.getUTCMinutes(), 0, 0)
-      } else {
-        newStart.setUTCHours(0, 0, 0, 0)
-      }
+      newStart.setUTCHours(0, 0, 0, 0)
       onRangeSelect(newStart, null)
     } else {
       // Second selection: complete range
@@ -120,7 +116,7 @@ export function TimeRangeCalendar({
       if (cellMs < startMs) {
         // Clicked before start: make this the new start
         const newStart = new Date(cellDate.getTime())
-        newStart.setUTCHours(startDate.getUTCHours(), startDate.getUTCMinutes(), 0, 0)
+        newStart.setUTCHours(0, 0, 0, 0)
         onRangeSelect(newStart, null)
       } else {
         const newEnd = new Date(cellDate.getTime())
@@ -192,8 +188,10 @@ export function TimeRangeCalendar({
               <button
                 type="button"
                 onClick={() => handleCellClick(cell.date)}
+                aria-label={cell.date.toISOString().slice(0, 10)}
+                aria-pressed={isSelectedEndpoint}
                 className={cn(
-                  "h-7 w-7 rounded-md text-xs font-normal transition-all flex items-center justify-center outline-none",
+                  "h-7 w-7 rounded-md text-xs font-normal transition-all flex items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
                   !cell.isCurrentMonth && "text-muted-foreground/40",
                   cell.isCurrentMonth && !isSelectedEndpoint && !cell.isInRange && "text-foreground hover:bg-muted/80",
                   cell.isInRange && !isSelectedEndpoint && "text-foreground hover:bg-primary/20",

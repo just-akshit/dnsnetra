@@ -58,6 +58,26 @@ AUTO_BUCKET_CANDIDATES: List[int] = [
 
 # Authoritative, immutable preset registry mapping window names to PresetSpec
 PRESET_REGISTRY: Dict[str, PresetSpec] = {
+    "30s": PresetSpec(
+        preset_name="30s",
+        duration_seconds=30,
+        default_bucket=BucketSpec(bucket_seconds=5, bucket_label="5s"),
+    ),
+    "1m": PresetSpec(
+        preset_name="1m",
+        duration_seconds=60,
+        default_bucket=BucketSpec(bucket_seconds=10, bucket_label="10s"),
+    ),
+    "5m": PresetSpec(
+        preset_name="5m",
+        duration_seconds=300,
+        default_bucket=BucketSpec(bucket_seconds=30, bucket_label="30s"),
+    ),
+    "10m": PresetSpec(
+        preset_name="10m",
+        duration_seconds=600,
+        default_bucket=BucketSpec(bucket_seconds=60, bucket_label="1m"),
+    ),
     "15m": PresetSpec(
         preset_name="15m",
         duration_seconds=900,

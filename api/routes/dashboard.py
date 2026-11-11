@@ -52,14 +52,13 @@ def _build_timeseries_response(tr: ResolvedTimeRange, service: ReportingService)
             bounded_tr = resolve_time_range(
                 start_time=min_time,
                 end_time=tr.resolved_now,
-                bucket="1w",
             )
             return _build_timeseries_response(bounded_tr, service)
         except Exception:
             return TimeseriesResponse(
                 start_time=format_iso8601_utc(min_time),
                 end_time=format_iso8601_utc(tr.resolved_now),
-                bucket_size="1w",
+                bucket_size="auto",
                 bucket_source="AUTO",
                 buckets=[],
             )
@@ -185,8 +184,8 @@ def get_dashboard(
         malicious_query_percentage=summary.malicious_query_percentage,
     )
 
-    # 3. Compute continuous timeseries (None for all-time where timeseries is undefined)
-    timeseries = None if tr.is_all_time else _build_timeseries_response(tr, reporting_service)
+    # 3. Compute continuous timeseries (all-time uses a bounded auto-bucketed timeline)
+    timeseries = _build_timeseries_response(tr, reporting_service)
 
     # 4. Top entities for this window
     top_clients = reporting_service.get_top_clients(time_range=tr, limit=10).items

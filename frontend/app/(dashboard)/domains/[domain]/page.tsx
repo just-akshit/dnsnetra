@@ -183,8 +183,8 @@ export default function DomainProfilePage() {
                 const report = await dnsnetraApi.createSavedReport({
                   kind: "entity_domain",
                   entity: domain,
-                  window: "7d",
-                  title: `${domain} — 7 day review`,
+                  window: "all_time",
+                  title: `${domain} — full history`,
                 })
                 toast.success(`Report ${report.public_id} created.`, {
                   action: {

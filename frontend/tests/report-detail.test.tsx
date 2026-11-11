@@ -225,6 +225,28 @@ describe("ReportDetailPage", () => {
     expect(screen.queryByText("No timeline for this window.")).not.toBeInTheDocument()
   })
 
+  it("warns when the selected window has no telemetry", async () => {
+    vi.spyOn(dnsnetraApi, "getSavedReport").mockResolvedValue({
+      ...report,
+      snapshot: {
+        ...report.snapshot,
+        summary: {
+          total_queries: 0,
+          unique_clients: 0,
+          unique_domains: 0,
+          verdict_breakdown: { benign: 0, malicious: 0, review_needed: 0, unknown: 0 },
+          malicious_query_percentage: 0,
+        },
+        timeline: [],
+      },
+    } as any)
+
+    render(<ReportDetailPage />)
+    expect(
+      await screen.findByText("No telemetry in this window. Exports will contain no query rows.")
+    ).toBeInTheDocument()
+  })
+
   it("seeds the conclusion and shows review metadata for a reviewed report", async () => {
     vi.spyOn(dnsnetraApi, "getSavedReport").mockResolvedValue({
       ...report,

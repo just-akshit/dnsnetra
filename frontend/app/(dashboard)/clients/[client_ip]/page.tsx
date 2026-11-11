@@ -187,8 +187,8 @@ export default function ClientProfilePage() {
                 const report = await dnsnetraApi.createSavedReport({
                   kind: "entity_client",
                   entity: clientIp,
-                  window: "7d",
-                  title: `${clientIp} — 7 day review`,
+                  window: "all_time",
+                  title: `${clientIp} — full history`,
                 })
                 toast.success(`Report ${report.public_id} created.`, {
                   action: {

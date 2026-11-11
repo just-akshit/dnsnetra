@@ -412,6 +412,11 @@ export default function ReportDetailPage() {
             <StatCard label="Malicious" value={asNode(breakdown.malicious)} />
             <StatCard label="Review needed" value={asNode(breakdown.review_needed)} />
           </div>
+          {Number(summary.total_queries ?? 0) === 0 && (
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              No telemetry in this window. Exports will contain no query rows.
+            </p>
+          )}
           <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
             <DetailRow label="Benign queries" value={breakdown.benign} mono />
             <DetailRow label="Unknown queries" value={breakdown.unknown} mono />

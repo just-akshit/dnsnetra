@@ -7,6 +7,12 @@ import {
   createFilteredRowModel,
   createPaginatedRowModel,
   createSortedRowModel,
+  filterFn_arrIncludes,
+  filterFn_equals,
+  filterFn_inDateRange,
+  filterFn_inNumberRange,
+  filterFn_includesString,
+  filterFn_weakEquals,
   globalFilteringFeature,
   rowPaginationFeature,
   rowSelectionFeature,
@@ -30,6 +36,14 @@ export const dnsnetraTableFeatures = tableFeatures({
   filteredRowModel: createFilteredRowModel(),
   paginatedRowModel: createPaginatedRowModel(),
   sortedRowModel: createSortedRowModel(),
+  filterFns: {
+    includesString: filterFn_includesString,
+    inNumberRange: filterFn_inNumberRange,
+    equals: filterFn_equals,
+    arrIncludes: filterFn_arrIncludes,
+    inDateRange: filterFn_inDateRange,
+    weakEquals: filterFn_weakEquals,
+  },
 })
 
 export type DnsnetraTableFeatures = typeof dnsnetraTableFeatures

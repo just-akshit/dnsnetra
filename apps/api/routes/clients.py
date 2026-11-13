@@ -1,0 +1,130 @@
+"""
+api/routes/clients.py
+=====================
+Client collection and detail endpoints:
+- GET /api/v1/clients
+- GET /api/v1/clients/{client_ip}
+"""
+
+from __future__ import annotations
+
+import ipaddress
+import logging
+from typing import Any, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+
+from dnsnetra.core.security.rate_limiter import enforce_search_rate_limit
+from dnsnetra.core.security.rbac import require_permission
+from apps.api.schemas import (
+    ClientSummaryItem,
+    PaginatedResponse,
+)
+from dnsnetra.domains.investigations.schemas import (
+    ClientDossier,
+    EntityNotFoundError,
+    InvalidEntityError,
+)
+from dnsnetra.domains.investigations.service import InvestigationService
+from dnsnetra.domains.reporting.service import ReportingService
+from dnsnetra.time_engine import resolve_time_range
+
+logger = logging.getLogger("api_clients")
+
+router = APIRouter(prefix="/api/v1/clients", tags=["Clients"])
+
+
+def _check_no_temporal_params(window: Optional[str], start_time: Optional[str], end_time: Optional[str]) -> None:
+    """Reject unsupported temporal parameters on investigation/detail routes."""
+    if any(p is not None for p in (window, start_time, end_time)):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Client detail dossiers are lifetime profiles with recent query previews in Phase 2D. Temporal query parameters are not supported.",
+        )
+
+
+@router.get(
+    "",
+    response_model=PaginatedResponse[ClientSummaryItem],
+    summary="List and rank clients",
+    description="Paginated list of client IP endpoints ranked by query volume with canonical pagination and optional temporal filtering.",
+)
+def list_clients(
+    request: Request,
+    limit: int = Query(50, ge=1, le=1000, description="Max items to return"),
+    offset: int = Query(0, ge=0, description="Offset index"),
+    page: Optional[int] = Query(None, ge=1, description="Legacy page number alias"),
+    page_size: Optional[int] = Query(None, ge=1, le=1000, description="Legacy page size alias"),
+    search: Optional[str] = Query(None, description="Filter by client IP substring"),
+    sort: Optional[str] = Query(None, description="Sort column (e.g. total_queries, unique_domains, client_ip)"),
+    order: Optional[str] = Query(None, description="Sort direction (asc, desc)"),
+    window: Optional[str] = Query(None),
+    start_time: Optional[str] = Query(None),
+    end_time: Optional[str] = Query(None),
+    current_user: dict[str, Any] = Depends(require_permission("clients:read")),
+) -> PaginatedResponse[ClientSummaryItem]:
+    """Canonical client reporting with SQL-level search and sorting."""
+    eff_limit = page_size if (page_size is not None and page_size >= 1) else limit
+    eff_offset = ((page - 1) * eff_limit) if (page is not None and page >= 1) else offset
+
+    stripped_search = search.strip() if search and search.strip() else None
+    if stripped_search:
+        enforce_search_rate_limit(request)
+
+    has_temporal = any(p is not None for p in (window, start_time, end_time))
+    tr = None
+    if has_temporal:
+        try:
+            tr = resolve_time_range(window=window, start_time=start_time, end_time=end_time)
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    service = ReportingService()
+    result = service.get_top_clients(
+        limit=eff_limit,
+        offset=eff_offset,
+        time_range=tr,
+        search=stripped_search,
+        sort_by=sort or "total_queries",
+        sort_order=order or "desc",
+    )
+
+    return PaginatedResponse[ClientSummaryItem](
+        total=result.total,
+        limit=result.limit,
+        offset=result.offset,
+        has_more=result.has_more,
+        items=result.items,
+    )
+
+
+@router.get(
+    "/{client_ip}",
+    response_model=ClientDossier,
+    summary="Get client forensic detail",
+    description="360-degree client forensic dossier backed by authoritative PostgreSQL client profiles, top destinations, threat activity, and recent events.",
+)
+def get_client_detail(
+    client_ip: str,
+    window: Optional[str] = Query(None),
+    start_time: Optional[str] = Query(None),
+    end_time: Optional[str] = Query(None),
+    current_user: dict[str, Any] = Depends(require_permission("clients:read")),
+) -> ClientDossier:
+    """Thin adapter delegating to InvestigationService.get_client_dossier."""
+    _check_no_temporal_params(window, start_time, end_time)
+
+    service = InvestigationService()
+    try:
+        dossier = service.get_client_dossier(client_ip)
+    except EntityNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except InvalidEntityError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    if not dossier.observed_in_network:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Client IP '{dossier.client_ip}' not found in client profiles.",
+        )
+    return dossier

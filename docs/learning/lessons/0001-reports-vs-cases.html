@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lesson 1 — Reports are photographs, cases are diaries</title>
+  <link rel="stylesheet" href="../assets/course.css" />
+</head>
+<body>
+  <main class="page">
+    <p class="kicker">Lesson 01 · Reporting, cases &amp; audit</p>
+    <h1>Reports are photographs.<br />Cases are diaries.</h1>
+    <p class="lede">
+      Three artifacts, three jobs. Once you can tell them apart, the design spec
+      stops looking like a pile of tables and starts looking like a system.
+    </p>
+
+    <div class="callout">
+      <span class="label">The one idea</span>
+      <p>
+        A <strong>report</strong> freezes what we saw. A <strong>case</strong>
+        tracks what we do about it. An <strong>audit log</strong> records who
+        did what. Evidence, work, accountability — in that order.
+      </p>
+    </div>
+
+    <h2>A moment you already recognise</h2>
+    <p>
+      An analyst notices <code>beacon.example</code> making repeated TXT
+      queries from one client. She opens the dossier, creates a report, then
+      opens a case and assigns it to herself. Over two days she comments, links
+      a second report, and finally resolves the case as a true positive. An
+      admin closes it.
+    </p>
+    <p>
+      A month later someone asks: <em>“Why did we decide that?”</em>
+      The report shows what the data looked like. The case shows the reasoning
+      and the hand-offs. The audit log shows who touched what. Three different
+      questions, three different records.
+    </p>
+
+    <h2>1. A report is a photograph</h2>
+    <p>
+      A report is created from an entity dossier or a filtered query set. It
+      stores a versioned <code>snapshot</code> — summary counts, profile,
+      timeline, up to 500 recent queries, intelligence, and provenance — plus
+      the filters and window that produced it.
+    </p>
+    <p>
+      After insert, the evidence does not move. Only the review fields
+      (<code>status</code>, <code>conclusion</code>, <code>verdict</code>,
+      reviewer and review time) can change. Reports are archived, never
+      deleted. The spec is explicit: <code>snapshot</code> is never updated
+      after creation (<a href="../docs/superpowers/specs/2026-11-10-reporting-and-cases-design.md#61-reports">spec §6.1</a>).
+    </p>
+    <p>
+      Why freeze it? Reproducibility. A report opened next year must show what
+      the analyst actually saw — not what the live data happens to say now.
+      That is what makes an export defensible and a conclusion reviewable.
+    </p>
+
+    <h2>2. A case is a diary</h2>
+    <p>
+      A case is a mutable work item — the thing people casually call a
+      <em>ticket</em>. It has a title, description, priority, assignee, status,
+      resolution, and links to reports. It is expected to change, because an
+      investigation is a process, not a fact.
+    </p>
+    <p>
+      The important design choice is <em>how</em> it changes. Every comment,
+      assignment, priority change, status change, and report link appends a row
+      to <code>case_events</code>. The current state is what you see; the event
+      timeline is how you got there
+      (<a href="../docs/superpowers/specs/2026-11-10-reporting-and-cases-design.md#63-case_events">spec §6.3</a>).
+    </p>
+    <p>
+      That is the diary: the current page is the status, but the earlier pages
+      are never torn out. A status field alone would tell you
+      <em>“resolved”</em> and lose <em>“resolved after the second report
+      contradicted the first.”</em>
+    </p>
+
+    <h2>3. The audit log is the ledger</h2>
+    <p>
+      The audit log is separate from both. It answers a system-wide question:
+      <em>who did what, when, and to which target?</em> The design extends it
+      with <code>target_type</code> and <code>target_id</code>, and adds actions
+      for report creation, review, archiving, and export, plus case creation,
+      updates, assignment, resolution, and closure
+      (<a href="../docs/superpowers/specs/2026-11-10-reporting-and-cases-design.md#65-audit-extension">spec §6.5</a>).
+    </p>
+    <p>
+      The difference from a case timeline is scope. The case timeline is
+      <em>this investigation</em>. The audit log is <em>the system</em>: it still
+      records the action after a user is deleted, because the actor email lives
+      in the audit metadata even when <code>created_by</code> becomes null.
+    </p>
+
+    <h2>The three layers side by side</h2>
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">&nbsp;</th>
+          <th scope="col">Report</th>
+          <th scope="col">Case</th>
+          <th scope="col">Audit log</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Changes after creation?</th>
+          <td>No — review fields only</td>
+          <td>Yes, continuously</td>
+          <td>No — append-only</td>
+        </tr>
+        <tr>
+          <th scope="row">Answers</th>
+          <td>“What did we see?”</td>
+          <td>“What are we doing?”</td>
+          <td>“Who did what?”</td>
+        </tr>
+        <tr>
+          <th scope="row">Granularity</th>
+          <td>One frozen snapshot</td>
+          <td>One investigation</td>
+          <td>One action</td>
+        </tr>
+        <tr>
+          <th scope="row">End of life</th>
+          <td>Archived</td>
+          <td>Closed (reopenable)</td>
+          <td>Retained</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>The case lifecycle, in one line</h2>
+    <div class="lifecycle">
+      <span class="state">open</span><span class="arrow">→</span>
+      <span class="state">triaged</span><span class="arrow">→</span>
+      <span class="state">investigating</span><span class="arrow">⇄</span>
+      <span class="state">awaiting_info</span><span class="arrow">→</span>
+      <span class="state">resolved</span><span class="arrow">→</span>
+      <span class="state">closed</span>
+    </div>
+    <p>
+      Analysts with <code>cases:write</code> move work forward. Only
+      <code>cases:manage</code> (ADMIN or SUPER_ADMIN) can close or reopen.
+      Resolving requires an outcome. An illegal jump — say
+      <code>open → resolved</code> — is rejected with HTTP 409 and the list of
+      allowed next states, rather than quietly producing a nonsense history
+      (<a href="../docs/superpowers/specs/2026-11-10-reporting-and-cases-design.md#103-case-state-machine">spec §10.3</a>).
+      The full table is in the <a href="../reference/glossary.html#states">glossary</a>.
+    </p>
+
+    <h2>The rule that surprises people</h2>
+    <div class="callout">
+      <span class="label">Assessment is not authority</span>
+      <p>
+        Marking a report reviewed, or resolving a case, <strong>never changes a
+        domain’s label</strong>. The only path that changes a stored label is
+        the existing daily-review override, and it requires a reason
+        (<a href="../docs/superpowers/specs/2026-11-10-reporting-and-cases-design.md#11-workflows">spec §4 #5, §11.4</a>).
+      </p>
+    </div>
+    <p>
+      This is a deliberate separation of concerns. An analyst’s assessment is
+      evidence for a decision; it is not the decision itself. Keeping the two
+      apart means a report can disagree with the label without silently
+      rewriting threat intelligence — and the disagreement is visible.
+    </p>
+
+    <h2>Why this shape keeps showing up</h2>
+    <p>
+      Incident response guidance treats handling as an ongoing process —
+      detection and analysis, containment, eradication and recovery,
+      post-incident activity — with coordination and documentation running
+      through all of it
+      (<a href="https://csrc.nist.gov/pubs/sp/800/61/r3/final">NIST SP 800-61r3</a>).
+      Case-management tools make the same split: cases carry the work,
+      timelines carry the history, and audit logs carry accountability
+      (<a href="https://docs.strangebee.com/thehive/user-guides/analyst-corner/cases/about-cases/">TheHive — About Cases</a>).
+      DNSNetra is applying that pattern to DNS telemetry.
+    </p>
+
+    <section class="quiz" data-quiz aria-labelledby="quiz-heading">
+      <h3 id="quiz-heading">Check your model</h3>
+      <p class="source">Answer from memory. Wrong answers are useful — they show which layer you are blurring.</p>
+
+      <div class="quiz-question"
+           data-correct="report"
+           data-explanation="Correct. The saved report is the frozen snapshot; only its review fields move."
+           data-hint="Not quite. Which artifact is built to be reproducible next year?">
+        <p class="quiz-prompt">Which record is frozen after creation?</p>
+        <div class="quiz-options">
+          <button type="button" data-option="report">The saved report</button>
+          <button type="button" data-option="case">The active case</button>
+          <button type="button" data-option="audit">The audit log</button>
+          <button type="button" data-option="export">The export file</button>
+        </div>
+        <p class="quiz-feedback" aria-live="polite"></p>
+      </div>
+
+      <div class="quiz-question"
+           data-correct="manage"
+           data-explanation="Correct. Closing and reopening need cases:manage; cases:write only progresses the work."
+           data-hint="Not quite. Progress and closure are deliberately different permissions.">
+        <p class="quiz-prompt">Who may close a case in this design?</p>
+        <div class="quiz-options">
+          <button type="button" data-option="analyst">Any assigned analyst</button>
+          <button type="button" data-option="support">Any support reader</button>
+          <button type="button" data-option="manage">Only cases managers</button>
+          <button type="button" data-option="author">Only report authors</button>
+        </div>
+        <p class="quiz-feedback" aria-live="polite"></p>
+      </div>
+
+      <div class="quiz-question"
+           data-correct="daily"
+           data-explanation="Correct. Only the daily-review override changes a stored label, and it requires a reason."
+           data-hint="Not quite. Look for the one path with explicit label authority.">
+        <p class="quiz-prompt">What is allowed to change a domain’s label?</p>
+        <div class="quiz-options">
+          <button type="button" data-option="review">Reviewing a report</button>
+          <button type="button" data-option="resolve">Resolving a case</button>
+          <button type="button" data-option="daily">Daily review override</button>
+          <button type="button" data-option="export">Exporting a report</button>
+        </div>
+        <p class="quiz-feedback" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <h2>Read this next</h2>
+    <p class="source">
+      <strong>Primary source:</strong> the local
+      <a href="../docs/superpowers/specs/2026-11-10-reporting-and-cases-design.md">design spec</a>,
+      sections 1–7. Read §1, then §6.1–§6.5, then §7. Keep the
+      <a href="../reference/glossary.html">glossary</a> beside it.
+    </p>
+    <p class="source">
+      <strong>For the wider practice:</strong> NIST SP 800-61 Rev. 3,
+      <a href="https://csrc.nist.gov/pubs/sp/800/61/r3/final">Incident Response Recommendations and Considerations</a>
+      (2025). It is the current NIST guidance and supersedes Rev. 2.
+    </p>
+
+    <div class="callout">
+      <span class="label">Your teacher is here</span>
+      <p>
+        If anything felt slippery — especially why reports are immutable while
+        cases are not — ask me a follow-up. I can re-explain it with a different
+        example, draw the data model, or trace one action through all three
+        layers.
+      </p>
+    </div>
+
+    <nav class="lesson-nav">
+      <span><a href="../reference/glossary.html">Reference: glossary</a></span>
+      <span>Next up: the six states and the permission ladder</span>
+      <span><a href="../MISSION.md">Mission</a></span>
+    </nav>
+  </main>
+
+  <script src="../assets/quiz.js"></script>
+</body>
+</html>

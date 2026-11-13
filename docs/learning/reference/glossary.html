@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Glossary — Reports, Cases & Audit</title>
+  <link rel="stylesheet" href="../assets/course.css" />
+</head>
+<body>
+  <main class="page">
+    <p class="kicker">Reference · DNSNetra learning workspace</p>
+    <h1>Reports, cases &amp; audit</h1>
+    <p class="lede">
+      A one-page vocabulary for the reporting-and-cases design. Keep this open
+      while reading the spec or a lesson.
+    </p>
+
+    <div class="callout">
+      <span class="label">The three layers</span>
+      <p>
+        <strong>Report</strong> — evidence, frozen.
+        <strong>Case (ticket)</strong> — work, moving.
+        <strong>Audit log</strong> — accountability, append-only.
+        Confusing these three is the most common reporting-system mistake.
+      </p>
+    </div>
+
+    <h2 id="core">Core terms</h2>
+
+    <dl>
+      <div class="term">
+        <dt id="report">Report</dt>
+        <dd>
+          An immutable snapshot of an entity dossier or a filtered query set,
+          created by an analyst and exportable as CSV or XLSX.
+          <span class="where">Spec §1, §6.1</span>
+        </dd>
+      </div>
+
+      <div class="term">
+        <dt id="snapshot">Snapshot</dt>
+        <dd>
+          The frozen JSON payload inside a report: summary, profile, timeline,
+          up to 500 recent queries, intelligence, and provenance. It is never
+          updated after insert.
+          <span class="where">Spec §7</span>
+        </dd>
+      </div>
+
+      <div class="term">
+        <dt id="immutability">Immutability</dt>
+        <dd>
+          The report's evidence fields cannot change. Only review fields
+          (<code>status</code>, <code>conclusion</code>, <code>verdict</code>,
+          <code>reviewed_by</code>, <code>reviewed_at</code>) may move. Reports
+          are archived, never deleted.
+          <span class="where">Spec §6.1, §10.1</span>
+        </dd>
+      </div>
+
+      <div class="term">
+        <dt id="case">Case (ticket)</dt>
+        <dd>
+          A mutable work item that tracks an investigation from creation to
+          closure: assignment, comments, evidence links, and an append-only
+          timeline. "Ticket" is the everyday word; "case" is the data model.
+          <span class="where">Spec §1, §6.2</span>
+        </dd>
+      </div>
+
+      <div class="term">
+        <dt id="case-event">Case event</dt>
+        <dd>
+          One row in <code>case_events</code>: created, comment,
+          status_changed, assigned, priority_changed, resolution_set,
+          report_linked, report_unlinked. Events are appended, not edited.
+          <span class="where">Spec §6.3</span>
+        </dd>
+      </div>
+
+      <div class="term">
+        <dt id="state-machine">State machine</dt>
+        <dd>
+          The rulebook of legal case states and transitions. An illegal move
+          returns HTTP 409 with the list of allowed next states, rather than
+          silently accepting a nonsense workflow.
+          <span class="where">Spec §10.3</span>
+        </dd>
+      </div>
+
+      <div class="term">
+        <dt id="transition">Transition</dt>
+        <dd>
+          A permitted move from one case state to another, with a required
+          permission and sometimes a required field (for example, resolving
+          requires a <code>resolution</code>).
+          <span class="where">Spec §10.3</span>
+        </dd>
+      </div>
+
+      <div class="term">
+        <dt id="triage">Triage</dt>
+        <dd>
+          Deciding whether a case is real work worth pursuing. In this design,
+          <code>open → triaged</code> is the triage decision.
+          <span class="where">Spec §10.3</span>
+        </dd>
+      </div>
+
+      <div class="term">
+        <dt id="resolution">Resolution</dt>
+        <dd>
+          The outcome recorded when a case is resolved: <code>true_positive</code>,
+          <code>false_positive</code>, <code>benign</code>, <code>duplicate</code>,
+          or <code>no_action</code>. It is retained in history even after a reopen.
+          <span class="where">Spec §6.2, §10.3</span>
+        </dd>
+      </div>
+
+      <div class="term">
+        <dt id="verdict">Verdict</dt>
+        <dd>
+          The classification of an entity: Benign, Malicious, Review Needed, or
+          Unknown. A report may carry an <em>assessed</em> verdict; that is not
+          the same as changing the stored label.
+          <span class="where">Spec §4 #5, §6.1</span>
+        </dd>
+      </div>
+
+      <div class="term">
+        <dt id="label-authority">Label authority</dt>
+        <dd>
+          The single path allowed to change a domain's stored label:
+          <code>POST /api/v1/daily-review/{domain}/verdict</code>, with a
+          required reason. Reviewing a report or resolving a case never changes
+          the label.
+          <span class="where">Spec §4 #5, §11.4</span>
+        </dd>
+      </div>
+
+      <div class="term">
+        <dt id="audit-log">Audit log</dt>
+        <dd>
+          A separate, append-only record of who did what, when, and to which
+          target. Extended with <code>target_type</code> and
+          <code>target_id</code> so report and case actions can be traced.
+          <span class="where">Spec §6.5</span>
+        </dd>
+      </div>
+
+      <div class="term">
+        <dt id="append-only">Append-only</dt>
+        <dd>
+          New facts are added as new rows; old facts are not rewritten. This is
+          what makes the case timeline and the audit log trustworthy after a
+          mistake or a disagreement.
+          <span class="where">Spec §6.3, §6.5</span>
+        </dd>
+      </div>
+
+      <div class="term">
+        <dt id="provenance">Provenance</dt>
+        <dd>
+          The list of evidence sources behind a report — local profile, query
+          history, reputation, daily review, VT, OTX, DNS, RDAP — each with a
+          timestamp. It answers "where did this claim come from?"
+          <span class="where">Spec §7</span>
+        </dd>
+      </div>
+
+      <div class="term">
+        <dt id="export">Export</dt>
+        <dd>
+          CSV or XLSX output of a report or query set. Exports are bounded
+          (50,000 rows), formula-injection-safe, filter-parity with the screen,
+          and audited with a <code>REPORT_EXPORTED</code> row.
+          <span class="where">Spec §9</span>
+        </dd>
+      </div>
+    </dl>
+
+    <h2 id="states">The six case states</h2>
+
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">State</th>
+          <th scope="col">Plain meaning</th>
+          <th scope="col">Allowed next</th>
+          <th scope="col">Who can move it</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>open</code></td>
+          <td>Created, not yet triaged</td>
+          <td><code>triaged</code>, <code>closed</code></td>
+          <td><code>cases:write</code>; close needs <code>cases:manage</code></td>
+        </tr>
+        <tr>
+          <td><code>triaged</code></td>
+          <td>Accepted as real work</td>
+          <td><code>investigating</code>, <code>awaiting_info</code>, <code>resolved</code>, <code>closed</code></td>
+          <td><code>cases:write</code>; close needs <code>cases:manage</code></td>
+        </tr>
+        <tr>
+          <td><code>investigating</code></td>
+          <td>Actively being worked</td>
+          <td><code>awaiting_info</code>, <code>resolved</code>, <code>closed</code></td>
+          <td><code>cases:write</code>; close needs <code>cases:manage</code></td>
+        </tr>
+        <tr>
+          <td><code>awaiting_info</code></td>
+          <td>Blocked on more evidence</td>
+          <td><code>investigating</code>, <code>resolved</code>, <code>closed</code></td>
+          <td><code>cases:write</code>; close needs <code>cases:manage</code></td>
+        </tr>
+        <tr>
+          <td><code>resolved</code></td>
+          <td>Finished, outcome recorded</td>
+          <td><code>closed</code>, <code>investigating</code> (reopen)</td>
+          <td><code>cases:manage</code></td>
+        </tr>
+        <tr>
+          <td><code>closed</code></td>
+          <td>Final, no further work</td>
+          <td><code>investigating</code> (reopen)</td>
+          <td><code>cases:manage</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <span class="label">Remember</span>
+      <p>
+        <code>resolved</code> needs a resolution. <code>closed</code> needs
+        <code>cases:manage</code>. Reopening clears <code>closed_at</code> but
+        keeps the old resolution in the event history.
+      </p>
+    </div>
+
+    <h2 id="related">Related</h2>
+    <ul>
+      <li><a href="../lessons/0001-reports-vs-cases.html">Lesson 1 — Reports are photographs, cases are diaries</a></li>
+      <li><a href="../docs/superpowers/specs/2026-11-10-reporting-and-cases-design.md">The design spec</a></li>
+      <li><a href="../MISSION.md">Mission</a> · <a href="../RESOURCES.md">Resources</a></li>
+    </ul>
+
+    <p class="source">
+      Compiled from the DNSNetra design spec. External grounding:
+      <a href="https://csrc.nist.gov/pubs/sp/800/61/r3/final">NIST SP 800-61r3</a>,
+      <a href="https://docs.strangebee.com/thehive/user-guides/analyst-corner/cases/about-cases/">TheHive — About Cases</a>.
+    </p>
+  </main>
+</body>
+</html>

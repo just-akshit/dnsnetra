@@ -23,7 +23,7 @@ eggs/
 .eggs/
 /lib/
 /lib64/
-!frontend/lib/
+!apps/web/lib/
 parts/
 sdist/
 var/
@@ -31,11 +31,37 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
 
 # Node & Next.js
 node_modules/
 .next/
 *.tsbuildinfo
+
+# Runtime data artifacts
+# Datasets and binary intelligence databases are regenerable and large, so they
+# stay out of the public repository. Rebuild them with:
+#   .venv/bin/python scripts/data/generate_historical_dataset.py
+data/intelligence/*.db
+data/datasets/*.csv
+data/samples/logs/*.log
+data/samples/logs/*.log.bak
+
+# Frozen pre-monorepo snapshot: kept locally for reference only.
+# It is a duplicate of the old tree, ~70MB, and contains historical credentials.
+legacy/
+
+data/logs/*.log
+!data/logs/dns_labeller.log
+!data/logs/nextjs.log
+!data/logs/pipeline.log
+data/**/*.db-shm
+data/**/*.db-wal
+data/intelligence/*.log
 
 # OS & IDE
 .DS_Store

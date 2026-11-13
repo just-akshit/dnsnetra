@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dnsnetra"
+version = "2.0.0"
+description = "DNSNetra DNS threat detection, intelligence, and investigation platform"
+readme = "README.md"
+requires-python = ">=3.11"
+dynamic = ["dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools.packages.find]
+where = ["backend/src"]
+include = ["dnsnetra*"]
+
+[tool.setuptools.package-data]
+"dnsnetra.persistence" = ["migrations/*.sql", "models/*.sql"]
+"dnsnetra.domains.unknown_domains" = ["sql/*.sql", "sql/migrations/*.sql"]
+"dnsnetra.feature_extraction" = ["enrichment/databases/*.mmdb"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v"
+pythonpath = ["backend/src"]
+filterwarnings = [
+    "ignore:.*Using `httpx` with `starlette.testclient` is deprecated.*",
+    "ignore:.*The anyio.abc.BlockingPortal alias is deprecated.*",
+]

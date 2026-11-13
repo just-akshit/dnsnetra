@@ -1,0 +1,343 @@
+/* DNSNetra teaching course — shared stylesheet
+   Tufte-inspired: paper, narrow measure, hairlines, quiet color. */
+
+:root {
+  --paper: #fbfaf7;
+  --surface: #ffffff;
+  --ink: #1b1a17;
+  --muted: #6b665d;
+  --rule: #ded8cc;
+  --accent: #8a3a2a;
+  --accent-soft: #f4e9e4;
+  --ok: #2f6b4f;
+  --ok-soft: #e8f1eb;
+  --bad: #9b2f2f;
+  --bad-soft: #f7e8e6;
+  --measure: 44rem;
+  --sans: "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #161513;
+    --surface: #1d1b18;
+    --ink: #eee9df;
+    --muted: #a39b8d;
+    --rule: #3a362f;
+    --accent: #e0896f;
+    --accent-soft: #2a211d;
+    --ok: #7fc39c;
+    --ok-soft: #1d2a22;
+    --bad: #e08b8b;
+    --bad-soft: #2b1e1d;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 19px;
+  line-height: 1.58;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 4.5rem 1.5rem 6rem;
+}
+
+.kicker {
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 0.9rem;
+}
+
+h1, h2, h3 {
+  font-family: var(--serif);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.12;
+}
+
+h1 {
+  font-size: clamp(2.1rem, 5vw, 2.9rem);
+  margin: 0 0 0.75rem;
+}
+
+h2 {
+  font-size: 1.42rem;
+  margin: 3rem 0 0.9rem;
+  padding-top: 1.15rem;
+  border-top: 1px solid var(--rule);
+}
+
+h3 {
+  font-size: 1.08rem;
+  margin: 1.8rem 0 0.5rem;
+}
+
+p { margin: 0 0 1.05rem; }
+
+.lede {
+  font-size: 1.18rem;
+  color: var(--muted);
+  margin-bottom: 2rem;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+
+a:hover { text-decoration-thickness: 2px; }
+
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+ul, ol { padding-left: 1.3rem; margin: 0 0 1.1rem; }
+li { margin-bottom: 0.35rem; }
+
+.mono, code, kbd {
+  font-family: var(--mono);
+  font-size: 0.86em;
+}
+
+code {
+  background: var(--accent-soft);
+  padding: 0.08em 0.32em;
+  border-radius: 2px;
+}
+
+/* Comparison table */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.6rem 0 2rem;
+  font-size: 0.94rem;
+}
+
+th, td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.7rem 0.65rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+th {
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+tbody tr:last-child td { border-bottom: none; }
+
+/* Callout */
+.callout {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  padding: 1rem 1.15rem;
+  margin: 1.8rem 0;
+}
+
+.callout p:last-child { margin-bottom: 0; }
+
+.callout .label {
+  display: block;
+  font-family: var(--sans);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 0.35rem;
+}
+
+/* State pills / lifecycle */
+.lifecycle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 1.3rem 0 1.6rem;
+}
+
+.state {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  border: 1px solid var(--rule);
+  padding: 0.28rem 0.55rem;
+  background: var(--surface);
+  white-space: nowrap;
+}
+
+.arrow {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.9rem;
+}
+
+/* Quiz */
+.quiz {
+  border: 1px solid var(--rule);
+  background: var(--surface);
+  padding: 1.4rem 1.4rem 1.1rem;
+  margin: 2.2rem 0;
+}
+
+.quiz > h3 { margin-top: 0; }
+
+.quiz-question + .quiz-question {
+  margin-top: 1.6rem;
+  padding-top: 1.4rem;
+  border-top: 1px solid var(--rule);
+}
+
+.quiz-prompt {
+  font-weight: 600;
+  margin-bottom: 0.7rem;
+}
+
+.quiz-options {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.quiz-options button {
+  font-family: var(--serif);
+  font-size: 0.98rem;
+  text-align: left;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--rule);
+  padding: 0.6rem 0.75rem;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.quiz-options button:hover:not(:disabled) {
+  border-color: var(--muted);
+}
+
+.quiz-options button:disabled { cursor: default; }
+
+.quiz-options button.correct {
+  border-color: var(--ok);
+  background: var(--ok-soft);
+}
+
+.quiz-options button.wrong {
+  border-color: var(--bad);
+  background: var(--bad-soft);
+}
+
+.quiz-feedback {
+  min-height: 1.35rem;
+  margin: 0.7rem 0 0;
+  font-size: 0.92rem;
+  color: var(--muted);
+}
+
+.quiz-feedback.is-correct { color: var(--ok); }
+.quiz-feedback.is-wrong { color: var(--bad); }
+
+/* Footer nav */
+.lesson-nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 3.5rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--rule);
+  font-family: var(--sans);
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+
+.lesson-nav a { font-family: var(--sans); }
+
+.source {
+  font-size: 0.93rem;
+  color: var(--muted);
+}
+
+.source strong { color: var(--ink); }
+
+/* Glossary */
+.term {
+  margin: 0 0 1.5rem;
+  padding-bottom: 1.2rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.term dt {
+  font-weight: 600;
+  font-size: 1.05rem;
+  margin-bottom: 0.2rem;
+}
+
+.term dd {
+  margin: 0;
+  color: var(--ink);
+}
+
+.term .where {
+  display: block;
+  margin-top: 0.3rem;
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+/* Print */
+@media print {
+  :root {
+    --paper: #ffffff;
+    --surface: #ffffff;
+    --ink: #111111;
+    --muted: #555555;
+    --rule: #cccccc;
+    --accent: #7a2e20;
+    --accent-soft: #f6f1ee;
+  }
+
+  body { font-size: 11pt; line-height: 1.45; }
+  .page { max-width: none; padding: 0; }
+  .quiz-options button { break-inside: avoid; }
+  .lesson-nav { display: none; }
+  h2, h3 { break-after: avoid; }
+  a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-family: var(--sans);
+    font-size: 0.72em;
+    color: var(--muted);
+    word-break: break-all;
+  }
+}
+
+@media (max-width: 560px) {
+  .page { padding: 2.5rem 1.1rem 4rem; }
+  body { font-size: 17px; }
+}

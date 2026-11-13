@@ -30,6 +30,9 @@ psutil>=6.0.0
 # Live Log Monitoring
 watchdog>=6.0.0
 
+# Live Kafka Ingestion
+kafka-python>=2.0.2
+
 # Testing
 pytest>=8.3.0
 httpx>=0.27.0

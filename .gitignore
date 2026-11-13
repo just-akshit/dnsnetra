@@ -43,22 +43,19 @@ node_modules/
 *.tsbuildinfo
 
 # Runtime data artifacts
-# Datasets and binary intelligence databases are regenerable and large, so they
-# stay out of the public repository. Rebuild them with:
+# Only small sample fixtures are versioned. Datasets, binary intelligence
+# databases and runtime logs are regenerable and stay out of the repository.
 #   .venv/bin/python scripts/data/generate_historical_dataset.py
-data/intelligence/*.db
 data/datasets/*.csv
+data/intelligence/**/*.db
+data/intelligence/*.lock
 data/samples/logs/*.log
 data/samples/logs/*.log.bak
+data/logs/
 
 # Frozen pre-monorepo snapshot: kept locally for reference only.
 # It is a duplicate of the old tree, ~70MB, and contains historical credentials.
 legacy/
-
-data/logs/*.log
-!data/logs/dns_labeller.log
-!data/logs/nextjs.log
-!data/logs/pipeline.log
 data/**/*.db-shm
 data/**/*.db-wal
 data/intelligence/*.log
